@@ -1,0 +1,17 @@
+[flake8]
+# Ignora specifiche regole (come E501: lunghezza della riga, W503: operatore all'inizio della riga)
+#ignore = E501, W503
+
+# Imposta la lunghezza massima della riga a 127 caratteri
+max-line-length = 127
+
+# Escludi alcuni file o cartelle dal controllo
+exclude =
+    .git,
+    __pycache__,
+    alembic/,
+    migrations/,
+    venv/,
+
+# Imposta la complessità ciclomatica massima (quanto complesso può essere il codice)
+max-complexity = 10
