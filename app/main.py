@@ -6,7 +6,7 @@ import sentry_sdk
 from fastapi import FastAPI
 from fastapi.responses import ORJSONResponse
 
-from app.api.v1.routes import users
+from app.api.v1.routes import token
 from app.core.config import settings
 from app.core.logging import setup_logging
 
@@ -32,7 +32,7 @@ app = FastAPI(
 )
 
 # Routers
-app.include_router(users.router, prefix="/api/v1/users", tags=["users"])
+app.include_router(token.router, prefix="/api/v1/token/", tags=["token"])
 
 
 @app.get("/health", tags=["health"])
