@@ -7,6 +7,7 @@ class TokenResponse(BaseModel):
     verified: bool
     expired: bool
     expires_in: int
+    expires_at: int
     username: str
     user_id: int
     session_id: int

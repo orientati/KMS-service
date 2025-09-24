@@ -3,7 +3,7 @@ from __future__ import annotations
 import jwt
 import logging
 import shutil
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import List
 
@@ -15,15 +15,15 @@ from app.schemas.token import TokenResponse, TokenCreate
 
 logger = logging.getLogger(__name__)
 
+
 def create_token(data: TokenCreate) -> str:
     private_key_path = get_current_private_key_path()
     with open(private_key_path, "rb") as key_file:
         private_key = key_file.read()
 
-    payload = data.dict()
-    # Usa datetime.utcnow() per evitare problemi di timezone
+    payload = data.model_dump()
     if "exp" not in payload:
-        payload["exp"] = int((datetime.utcnow() + timedelta(minutes=30)).timestamp())
+        payload["exp"] = int((datetime.now(timezone.utc) + timedelta(minutes=30)).timestamp())
     token = jwt.encode(
         payload,
         private_key,
@@ -48,20 +48,21 @@ def verify_token(token: str) -> TokenResponse:
                 algorithms=["RS256"],
                 options={"verify_aud": False}
             )
-            # Aggiungi i campi richiesti da TokenResponse
-            now = datetime.utcnow().timestamp()
+            now = datetime.now(timezone.utc).timestamp()
             exp = payload.get("exp", now + 1)
             expired = now > exp
             response_data = {
                 **payload,
                 "verified": True,
                 "expired": expired,
+                "expires_at": int(exp)
             }
             return TokenResponse(**response_data)
         except Exception as e:
             last_error = e
             continue
     raise InvalidTokenError(f"Token non valido: {last_error}")
+
 
 def create_secret_keys() -> dict:
     """
