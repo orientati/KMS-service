@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import jwt
 import logging
 import shutil
 from datetime import datetime, timedelta
@@ -14,14 +15,53 @@ from app.schemas.token import TokenResponse, TokenCreate
 
 logger = logging.getLogger(__name__)
 
+def create_token(data: TokenCreate) -> str:
+    private_key_path = get_current_private_key_path()
+    with open(private_key_path, "rb") as key_file:
+        private_key = key_file.read()
+
+    payload = data.dict()
+    # Usa datetime.utcnow() per evitare problemi di timezone
+    if "exp" not in payload:
+        payload["exp"] = int((datetime.utcnow() + timedelta(minutes=30)).timestamp())
+    token = jwt.encode(
+        payload,
+        private_key,
+        algorithm="RS256"
+    )
+    if isinstance(token, bytes):
+        token = token.decode("utf-8")
+    return token
 
 def verify_token(token: str) -> TokenResponse:
-    pass
+    from jwt import InvalidTokenError
 
-
-def create_token(data: TokenCreate) -> str:
-    pass
-
+    public_keys = list_available_public_keys()
+    last_error = None
+    for key_info in public_keys:
+        try:
+            with open(key_info['path'], "rb") as key_file:
+                public_key = key_file.read()
+            payload = jwt.decode(
+                token,
+                public_key,
+                algorithms=["RS256"],
+                options={"verify_aud": False}
+            )
+            # Aggiungi i campi richiesti da TokenResponse
+            now = datetime.utcnow().timestamp()
+            exp = payload.get("exp", now + 1)
+            expired = now > exp
+            response_data = {
+                **payload,
+                "verified": True,
+                "expired": expired,
+            }
+            return TokenResponse(**response_data)
+        except Exception as e:
+            last_error = e
+            continue
+    raise InvalidTokenError(f"Token non valido: {last_error}")
 
 def create_secret_keys() -> dict:
     """
@@ -225,12 +265,15 @@ def rotate_keys(cleanup_public_days: int = 30, max_private_backups: int = 5) -> 
 def get_current_private_key_path() -> str:
     """
     Restituisce il percorso della chiave privata attualmente attiva.
+    Se la chiave non esiste, la crea tramite rotate_keys().
 
     Returns:
         str: Percorso della chiave privata attiva
     """
-    return str(Path(settings.PRIVATE_KEY_PATH) / settings.PRIVATE_KEY_FILENAME)
-
+    private_key_path = Path(settings.PRIVATE_KEY_PATH) / settings.PRIVATE_KEY_FILENAME
+    if not private_key_path.exists():
+        rotate_keys()
+    return str(private_key_path)
 
 def list_available_public_keys() -> List[dict]:
     """

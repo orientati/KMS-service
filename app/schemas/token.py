@@ -17,3 +17,6 @@ class TokenCreate(BaseModel):
     username: str
     session_id: int
     expires_in: int  # in minuti
+
+class TokenVerifyRequest(BaseModel):
+    token: str
