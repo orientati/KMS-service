@@ -212,4 +212,5 @@ __marimo__/
 .vscode/launch.json
 .vscode/extensions.json
 .history/
-=======
+
+.idea/
