@@ -1,5 +1,5 @@
 [project]
-name = "servizio-template"
+name = "kms-service"
 version = "0.1.0"
 description = "Template dei servizi FastAPI orientati"
 authors = [
