@@ -23,7 +23,7 @@ def create_token(data: TokenCreate) -> str:
 
     payload = data.model_dump()
     if "exp" not in payload:
-        payload["exp"] = int((datetime.now(timezone.utc) + timedelta(minutes=30)).timestamp())
+        payload["exp"] = int((datetime.now(timezone.utc) + timedelta(minutes=data.expires_in)).timestamp()) #calcolo quando scade il token in base al tempo in minuti passato
     token = jwt.encode(
         payload,
         private_key,
@@ -50,6 +50,7 @@ def verify_token(token: str) -> TokenResponse:
             )
             now = datetime.now(timezone.utc).timestamp()
             exp = payload.get("exp", now + 1)
+            print(exp)
             expired = now > exp
             response_data = {
                 **payload,
