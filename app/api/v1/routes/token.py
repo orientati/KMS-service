@@ -2,16 +2,16 @@
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from app.schemas.token import TokenCreate, TokenResponse, TokenVerifyRequest
+from app.schemas.token import TokenCreate, TokenResponse, TokenVerifyRequest, TokenCreateResponse
 from app.services.token_service import create_token, verify_token
 
 router = APIRouter()
 
 
-@router.post("/create", response_model=str)
-def api_create_token(payload: TokenCreate) -> str:
+@router.post("/create", response_model=TokenCreateResponse)
+def api_create_token(payload: TokenCreate) -> TokenCreateResponse:
     token_str = create_token(payload)
-    return token_str
+    return TokenCreateResponse(token=token_str)
 
 @router.post("/verify", response_model=TokenResponse)
 def api_verify_token(payload: TokenVerifyRequest) -> TokenResponse:
