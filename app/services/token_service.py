@@ -12,6 +12,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 
 from app.core.config import settings
 from app.schemas.token import TokenResponse, TokenCreate
+from app.services.http_client import OrientatiException
 
 logger = logging.getLogger(__name__)
 
@@ -36,10 +37,9 @@ def create_token(data: TokenCreate) -> str:
 def verify_token(token: str) -> TokenResponse:
     from jwt import InvalidTokenError
 
-    public_keys = list_available_public_keys()
-    last_error = None
-    for key_info in public_keys:
-        try:
+    try:
+        public_keys = list_available_public_keys()
+        for key_info in public_keys:
             with open(key_info['path'], "rb") as key_file:
                 public_key = key_file.read()
             payload = jwt.decode(
@@ -59,11 +59,10 @@ def verify_token(token: str) -> TokenResponse:
                 "expires_at": int(exp)
             }
             return TokenResponse(**response_data)
-        except Exception as e:
-            last_error = e
-            continue
-    raise InvalidTokenError(f"Token non valido: {last_error}")
-
+    except OrientatiException as e:
+        raise e
+    except Exception as e:
+        raise OrientatiException(exc=e, url="token/verify_token")
 
 def create_secret_keys() -> dict:
     """
@@ -132,8 +131,7 @@ def create_secret_keys() -> dict:
         }
 
     except Exception as e:
-        logger.error(f"Errore durante la creazione delle chiavi: {e}")
-        raise
+        raise OrientatiException(exc=e, url="token/create_secret_keys")
 
 
 def cleanup_old_public_keys(max_age_days: int = 30) -> List[str]:
@@ -180,8 +178,7 @@ def cleanup_old_public_keys(max_age_days: int = 30) -> List[str]:
         return deleted_files
 
     except Exception as e:
-        logger.error(f"Errore durante la pulizia delle chiavi pubbliche: {e}")
-        raise
+        raise OrientatiException(exc=e, url="token/cleanup_old_public_keys")
 
 
 def cleanup_old_private_backups(max_backups: int = 5) -> List[str]:
@@ -219,8 +216,7 @@ def cleanup_old_private_backups(max_backups: int = 5) -> List[str]:
         return deleted_files
 
     except Exception as e:
-        logger.error(f"Errore durante la pulizia dei backup privati: {e}")
-        raise
+        raise OrientatiException(exc=e, url="token/cleanup_old_private_backups")
 
 
 def rotate_keys(cleanup_public_days: int = 30, max_private_backups: int = 5) -> dict:
@@ -260,8 +256,7 @@ def rotate_keys(cleanup_public_days: int = 30, max_private_backups: int = 5) -> 
         return result
 
     except Exception as e:
-        logger.error(f"Errore durante la rotazione delle chiavi: {e}")
-        raise
+        raise OrientatiException(exc=e, url="token/rotate_keys")
 
 
 def get_current_private_key_path() -> str:
@@ -312,5 +307,4 @@ def list_available_public_keys() -> List[dict]:
         return public_keys
 
     except Exception as e:
-        logger.error(f"Errore nel listing delle chiavi pubbliche: {e}")
-        return []
+        raise OrientatiException(exc=e, url="token/list_available_public_keys")
