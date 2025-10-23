@@ -6,9 +6,6 @@ import traceback
 
 logger = get_logger(__name__)
 
-# Classi e Enum per gestire richieste HTTP in modo strutturato
-API_PREFIX = settings.API_PREFIX
-
 class OrientatiException(Exception):
     """Eccezione personalizzata generica per l'applicazione Orientati.
     Attributes:
