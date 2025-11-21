@@ -8,14 +8,12 @@ class TokenResponse(BaseModel):
     expired: bool
     expires_in: int
     expires_at: int
-    username: str
     user_id: int
     session_id: int
 
 
 class TokenCreate(BaseModel):
     user_id: int
-    username: str
     session_id: int
     expires_in: int  # in minuti
 
