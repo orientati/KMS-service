@@ -12,7 +12,7 @@ WORKDIR /app
 ENV PYTHONUNBUFFERED=1
 COPY --from=builder /usr/local /usr/local
 COPY app /app/app
-COPY .env.example /app/.env.example
+COPY .env /app/.env
 
 # Default command: run migrations then start api
 CMD uvicorn app.main:app --host 0.0.0.0 --port ${SERVICE_PORT:-8000}
