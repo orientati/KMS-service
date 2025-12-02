@@ -62,7 +62,7 @@ def verify_token(token: str) -> TokenResponse:
     except OrientatiException as e:
         raise e
     except Exception as e:
-        raise OrientatiException(exc=e, url="token/verify_token")
+        raise OrientatiException(exc=e, url="token/verify_token", status_code=401, message="Invalid Token", details={"message": "Unable to verify token"})
 
 def create_secret_keys() -> dict:
     """
