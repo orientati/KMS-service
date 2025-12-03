@@ -1,5 +1,5 @@
 [project]
-name = "servizio-template"
+name = "kms-service"
 version = "0.1.0"
 description = "Template dei servizi FastAPI orientati"
 authors = [
@@ -15,7 +15,6 @@ dependencies = [
     "python-dotenv (>=1.1.1,<2.0.0)",
     "pydantic-settings (>=2.10.1,<3.0.0)",
     "httpx (>=0.28.1,<0.29.0)",
-    "aio-pika (>=9.5.7,<10.0.0)",
     "sentry-sdk (>=2.35.0,<3.0.0)",
     "pydantic[email] (>=2.11.7,<3.0.0)",
     "orjson (>=3.11.2,<4.0.0)",
@@ -23,6 +22,7 @@ dependencies = [
     "cryptography (>=45.0.7,<46.0.0)",
     "apscheduler (>=3.11.0,<4.0.0)",
     "pyjwt (>=2.10.1,<3.0.0)",
+    "pika (>=1.3.2,<2.0.0)",
 ]
 
 [build-system]
