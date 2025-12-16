@@ -1,12 +1,12 @@
 $ImageName = "kms-service"
 
-Write-Host "==> Compilazione immagine Docker..."
-docker build -t $ImageName .
+Write-Host "==> Avvio con Docker Compose (build & up)..."
+docker compose up -d --build
 
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "Errore nella compilazione dell'immagine!"
+    Write-Host "Errore nell'avvio con Docker Compose!"
     exit 1
 }
 
-Write-Host "==> Avvio container..."
-docker run -it --rm -p 8000:8000 $ImageName
+Write-Host "==> Servizio avviato in background."
+Write-Host "Per vedere i log: docker compose logs -f"
