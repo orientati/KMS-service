@@ -1,0 +1,13 @@
+services:
+  kms-service:
+    build: .
+    image: kms-service
+    ports:
+      - "8000:8000"
+    volumes:
+      - kms_service_certs_data:/app/certs
+    environment:
+      - SERVICE_PORT=8000
+
+volumes:
+  kms_service_certs_data:
