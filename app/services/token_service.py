@@ -5,7 +5,7 @@ import logging
 import shutil
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -16,51 +16,117 @@ from app.services.http_client import OrientatiException
 
 logger = logging.getLogger(__name__)
 
+# Cache for keys
+_CACHED_PRIVATE_KEY: Optional[bytes] = None
+_CACHED_PUBLIC_KEYS: Optional[List[dict]] = None
+_LAST_CACHE_UPDATE: Optional[datetime] = None
+_CACHE_TTL = timedelta(minutes=5)  # Refresh public keys list every 5 minutes
+
+def _get_cached_private_key() -> bytes:
+    global _CACHED_PRIVATE_KEY
+    if _CACHED_PRIVATE_KEY is None:
+        private_key_path = get_current_private_key_path()
+        with open(private_key_path, "rb") as key_file:
+            _CACHED_PRIVATE_KEY = key_file.read()
+    return _CACHED_PRIVATE_KEY
+
+def _get_cached_public_keys(force_refresh: bool = False) -> List[bytes]:
+    global _CACHED_PUBLIC_KEYS, _LAST_CACHE_UPDATE
+    
+    now = datetime.now()
+    if (
+        _CACHED_PUBLIC_KEYS is None 
+        or force_refresh 
+        or (_LAST_CACHE_UPDATE and now - _LAST_CACHE_UPDATE > _CACHE_TTL)
+    ):
+        keys_info = list_available_public_keys()
+        loaded_keys = []
+        for key_info in keys_info:
+            try:
+                with open(key_info['path'], "rb") as key_file:
+                    loaded_keys.append(key_file.read())
+            except Exception as e:
+                logger.warning(f"Failed to load public key {key_info['path']}: {e}")
+        
+        _CACHED_PUBLIC_KEYS = loaded_keys
+        _LAST_CACHE_UPDATE = now
+        
+    return _CACHED_PUBLIC_KEYS
+
+def _invalidate_cache():
+    global _CACHED_PRIVATE_KEY, _CACHED_PUBLIC_KEYS, _LAST_CACHE_UPDATE
+    _CACHED_PRIVATE_KEY = None
+    _CACHED_PUBLIC_KEYS = None
+    _LAST_CACHE_UPDATE = None
 
 def create_token(data: TokenCreate) -> str:
-    private_key_path = get_current_private_key_path()
-    with open(private_key_path, "rb") as key_file:
-        private_key = key_file.read()
+    try:
+        private_key = _get_cached_private_key()
+        
+        payload = data.model_dump()
+        if "exp" not in payload:
+            payload["exp"] = int((datetime.now(timezone.utc) + timedelta(minutes=data.expires_in)).timestamp())
 
-    payload = data.model_dump()
-    if "exp" not in payload:
-        payload["exp"] = int((datetime.now(timezone.utc) + timedelta(minutes=data.expires_in)).timestamp()) #calcolo quando scade il token in base al tempo in minuti passato
-    token = jwt.encode(
-        payload,
-        private_key,
-        algorithm="RS256"
-    )
-    if isinstance(token, bytes):
-        token = token.decode("utf-8")
-    return token
+        token = jwt.encode(
+            payload,
+            private_key,
+            algorithm="RS256"
+        )
+        if isinstance(token, bytes):
+            token = token.decode("utf-8")
+        return token
+    except Exception as e:
+         # Force refresh on error in case key file changed on disk but not in cache (unlikely but safe)
+        _invalidate_cache()
+        raise e
 
 def verify_token(token: str) -> TokenResponse:
     from jwt import InvalidTokenError
 
     try:
-        public_keys = list_available_public_keys()
-        for key_info in public_keys:
-            with open(key_info['path'], "rb") as key_file:
-                public_key = key_file.read()
-            payload = jwt.decode(
-                token,
-                public_key,
-                algorithms=["RS256"],
-                options={"verify_aud": False}
-            )
-            now = datetime.now(timezone.utc).timestamp()
-            exp = payload.get("exp", now + 1)
-            print(exp)
-            expired = now > exp
-            response_data = {
-                **payload,
-                "verified": True,
-                "expired": expired,
-                "expires_at": int(exp)
-            }
-            return TokenResponse(**response_data)
+        # Try with cached keys first
+        public_keys = _get_cached_public_keys()
+        
+        last_exception = None
+        for public_key in public_keys:
+            try:
+                payload = jwt.decode(
+                    token,
+                    public_key,
+                    algorithms=["RS256"],
+                    options={"verify_aud": False}
+                )
+                
+                # If we get here, signature is valid
+                now = datetime.now(timezone.utc).timestamp()
+                exp = payload.get("exp", now + 1)
+                
+                expired = now > exp
+                response_data = {
+                    **payload,
+                    "verified": True,
+                    "expired": expired,
+                    "expires_at": int(exp)
+                }
+                return TokenResponse(**response_data)
+            except InvalidTokenError as e:
+                last_exception = e
+                continue
+            except Exception as e:
+                logger.error(f"Error decoding token with a key: {e}")
+                continue
+
+        # If we failed with all keys, maybe cache is stale? Try refreshing once.
+        # But only if we suspect missing keys, not just invalid signature
+        # Optimization: We could try refreshing if we haven't refreshed recently and signature failed
+        # For now, let's just return/raise based on last exception if no key worked
+        
+        raise last_exception if last_exception else InvalidTokenError("No keys available for verification")
+
     except OrientatiException as e:
         raise e
+    except InvalidTokenError:
+         raise OrientatiException(status_code=401, message="Invalid Token", details={"message": "Token signature invalid or expired"}, url="token/verify_token")
     except Exception as e:
         raise OrientatiException(exc=e, url="token/verify_token", status_code=401, message="Invalid Token", details={"message": "Unable to verify token"})
 
@@ -122,6 +188,9 @@ def create_secret_keys() -> dict:
         logger.info(f"Nuova chiave privata salvata: {current_private_path}")
         logger.info(f"Nuova chiave pubblica salvata: {public_path}")
 
+        # Invalidate cache after rotation
+        _invalidate_cache()
+
         return {
             'timestamp': timestamp,
             'private_key_path': str(current_private_path),
@@ -172,6 +241,10 @@ def cleanup_old_public_keys(max_age_days: int = 30) -> List[str]:
 
         if deleted_files:
             logger.info(f"Eliminate {len(deleted_files)} chiavi pubbliche obsolete")
+            # Invalidate cache if public keys changed
+            global _CACHED_PUBLIC_KEYS, _LAST_CACHE_UPDATE
+            _CACHED_PUBLIC_KEYS = None
+            _LAST_CACHE_UPDATE = None
         else:
             logger.info("Nessuna chiave pubblica obsoleta da eliminare")
 
