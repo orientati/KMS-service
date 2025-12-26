@@ -1,35 +1,28 @@
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from pathlib import Path
+import tempfile
+import shutil
+import os
 
-from app.api.deps import get_db
-from app.db.base import Base
+# Imposta le variabili d'ambiente PRIMA di importare qualsiasi modulo che usa settings
+test_keys_dir = tempfile.mkdtemp()
+os.environ["KMS_PRIVATE_KEY_PATH"] = str(Path(test_keys_dir) / "private")
+os.environ["KMS_PUBLIC_KEY_PATH"] = str(Path(test_keys_dir) / "public")
+
 from app.main import app
 
-# DB in memoria per i test
-SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
-
-engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-
-# Override della dipendenza get_db per i test
-def override_get_db():
-    db = TestingSessionLocal()
+@pytest.fixture(scope="session", autouse=True)
+def setup_test_env():
+    # Setup
+    yield
+    # Teardown
     try:
-        yield db
-    finally:
-        db.close()
-
-
-app.dependency_overrides[get_db] = override_get_db
-
+        shutil.rmtree(test_keys_dir, ignore_errors=True)
+    except Exception:
+        pass
 
 @pytest.fixture(scope="function")
 def client():
-    # Ricrea le tabelle per ogni test
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
     with TestClient(app) as c:
         yield c
