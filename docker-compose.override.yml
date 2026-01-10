@@ -16,4 +16,4 @@ services:
 
   kms-service_db:
     ports:
-      - "5433:5432"
+      - "5430:5432"
