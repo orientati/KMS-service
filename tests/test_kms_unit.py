@@ -7,9 +7,6 @@ from app.models.key_pair import KeyPair
 @pytest.fixture
 def mock_settings():
     with patch("app.services.token_service.settings") as mock:
-        mock.PRIVATE_KEY_PATH = "/tmp"
-        mock.PUBLIC_KEY_PATH = "/tmp"
-        mock.PRIVATE_KEY_FILENAME = "private.pem"
         mock.RABBITMQ_HOST = "localhost"
         yield mock
 
