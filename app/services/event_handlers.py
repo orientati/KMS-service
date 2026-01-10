@@ -10,7 +10,7 @@ async def handle_key_rotated(message):
     """
     try:
         data = message.body.decode()
-        logger.info(f"Received KMS.KEY_ROTATED event: {data}")
+        logger.info(f"Ricevuto evento KMS.KEY_ROTATED: {data}")
         _invalidate_cache()
     except Exception as e:
-        logger.error(f"Error handling KMS.KEY_ROTATED event: {e}")
+        logger.error(f"Errore nella gestione dell'evento KMS.KEY_ROTATED: {e}")

@@ -83,11 +83,8 @@ async def _get_cached_public_keys(force_refresh: bool = False) -> List[str]:
              # Assumption: We want keys that are active OR were recently active (to allow verification of slightly old tokens)
              # For simpler logic: fetch all rows from DB is risky if many.
              # Let's fetch last 5 active/inactive keys to be safe?
-             # Or just active ones. Implementation dependent.
-             # Let's just fetch all for now, assuming rotation isn't daily for 100 years.
-             # Better: fetch all active + ones created in last X days.
-             
-             # For now: fetch all from key_pairs table is likely okay if we clean up old ones.
+             # Recupera tutte le chiavi pubbliche (es. attive o recenti)
+             # Per semplicità recuperiamo tutte le chiavi ordinate per data di creazione
              
             result = await session.execute(
                 select(KeyPair.public_key)
@@ -96,25 +93,22 @@ async def _get_cached_public_keys(force_refresh: bool = False) -> List[str]:
             _CACHED_PUBLIC_KEYS = result.scalars().all()
             _LAST_CACHE_UPDATE = now
         
-    return _CACHED_PUBLIC_KEYS or [] # Return empty list if None
+    return _CACHED_PUBLIC_KEYS or [] # Ritorna lista vuota se None
 
 
 def _invalidate_cache():
-    logger.info("Invalidating local key cache")
+    logger.info("Invalidazione cache locale delle chiavi")
     global _CACHED_PRIVATE_KEY, _CACHED_PUBLIC_KEYS, _LAST_CACHE_UPDATE
     _CACHED_PRIVATE_KEY = None
     _CACHED_PUBLIC_KEYS = None
     _LAST_CACHE_UPDATE = None
 
 
-import asyncio
-import functools
-
 async def create_token(data: dict) -> str:
     try:
         private_key_pem = await _get_cached_private_key()
         
-        # Load private key object
+        # Carica oggetto chiave privata
         private_key = serialization.load_pem_private_key(
             private_key_pem.encode('utf-8'),
             password=None
@@ -124,7 +118,7 @@ async def create_token(data: dict) -> str:
         if "exp" not in payload:
             payload["exp"] = int((datetime.now(timezone.utc) + timedelta(minutes=data.expires_in)).timestamp())
 
-        # Run CPU-bound jwt.encode in a thread pool
+        # Esegui jwt.encode (CPU-bound) in un thread pool
         loop = asyncio.get_running_loop()
         token = await loop.run_in_executor(
             None, 
@@ -156,7 +150,7 @@ async def verify_token(token: str) -> dict:
             try:
                 public_key = serialization.load_pem_public_key(pem.encode('utf-8'))
                 
-                # Run CPU-bound jwt.decode in a thread pool
+                # Esegui jwt.decode (CPU-bound) in un thread pool
                 payload = await loop.run_in_executor(
                     None,
                     functools.partial(
@@ -182,22 +176,22 @@ async def verify_token(token: str) -> dict:
                 last_exception = e
                 continue
             except Exception as e:
-                logger.error(f"Error decoding token with a key: {e}")
+                logger.error(f"Errore decodifica token con una chiave: {e}")
                 continue
 
-        raise last_exception if last_exception else InvalidTokenError("No keys available for verification")
+        raise last_exception if last_exception else InvalidTokenError("Nessuna chiave disponibile per la verifica")
 
     except OrientatiException as e:
         raise e
     except InvalidTokenError:
-         raise OrientatiException(status_code=401, message="Invalid Token", details={"message": "Token signature invalid or expired"}, url="token/verify_token")
+         raise OrientatiException(status_code=401, message="Token non valido", details={"message": "Firma del token non valida o scaduta"}, url="token/verify_token")
     except Exception as e:
-        raise OrientatiException(exc=e, url="token/verify_token", status_code=401, message="Invalid Token", details={"message": "Unable to verify token"})
+        raise OrientatiException(exc=e, url="token/verify_token", status_code=401, message="Token non valido", details={"message": "Impossibile verificare il token"})
 
 
 async def create_secret_keys() -> dict:
     """
-    Generates new RSA keys and stores in DB.
+    Genera nuove chiavi RSA e le salva nel DB.
     """
     try:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")

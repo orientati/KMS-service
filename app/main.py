@@ -27,21 +27,18 @@ sentry_sdk.init(
 async def lifespan(app: FastAPI):
     setup_logging()
     
-    # Subscribe to RabbitMQ events
+    # Sottoscrizione eventi RabbitMQ
     try:
         broker = AsyncBrokerSingleton()
         await broker.connect()
         await broker.subscribe("kms.events", handle_key_rotated)
     except Exception as e:
-        # Log error but don't crash service if RabbitMQ is down?
-        # Or crash if it's critical? For KMS sync, maybe critical.
-        # But failing startup might be too harsh if RabbitMQ is temporary down.
-        # Let's log error.
+        # Logga l'errore ma non bloccare l'avvio se RabbitMQ non è raggiungibile
         from app.core.logging import get_logger
         logger = get_logger(__name__)
-        logger.error(f"Failed to subscribe to RabbitMQ events: {e}")
+        logger.error(f"Impossibile sottoscriversi agli eventi RabbitMQ: {e}")
 
-    # Scheduler setup
+    # Setup Scheduler
     scheduler = AsyncIOScheduler()
     # Esegue rotate_keys ogni settimana (domenica) alle 2:00
     scheduler.add_job(rotate_keys, CronTrigger(day_of_week='sun', hour=2, minute=0))
