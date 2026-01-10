@@ -1,13 +1,55 @@
 services:
+  rabbitmq:
+    image: rabbitmq:4-management
+    container_name: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: user
+      RABBITMQ_DEFAULT_PASS: pass
+    networks:
+      - rabbit_net
+
+  kms-service-migrate:
+    build: .
+    command: alembic upgrade head # sovrascrive il comando di avvio eseguendo solo le migrazioni
+    depends_on:
+      - kms-service_db
+    networks:
+      - kms_service_net
+      - rabbit_net
+    deploy:
+      replicas: 1 # forza una sola istanza
+    restart: "no" # non viene riavviato
+
   kms-service:
     build: .
-    image: kms-service
-    ports:
-      - "8000:8000"
-    volumes:
-      - kms_service_certs_data:/app/certs
+    command: gunicorn -k uvicorn.workers.UvicornWorker app.main:app --bind 0.0.0.0:8001 --workers 1
+    depends_on:
+      - kms-service_db
+      - kms-service-migrate
+      - rabbitmq
+    networks:
+      - kms_service_net
+      - rabbit_net
+    restart: unless-stopped
+
+  kms-service_db:
+    image: postgres:16
     environment:
-      - SERVICE_PORT=8000
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+      POSTGRES_DB: kms_service
+    volumes:
+      - kms_service_db_data:/var/lib/postgresql/data
+    networks:
+      - kms_service_net
+      - rabbit_net
+    restart: unless-stopped
 
 volumes:
-  kms_service_certs_data:
+  kms_service_db_data:
+
+
+networks:
+  kms_service_net:
+  rabbit_net:
+    driver: bridge
