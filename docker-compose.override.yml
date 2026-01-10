@@ -1,0 +1,19 @@
+services:
+  rabbitmq:
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
+  kms-service-migrate:
+    build: .
+    env_file: .env
+
+  kms-service:
+    build: .
+    env_file: .env
+    ports:
+      - "8001:8001"
+
+  kms-service_db:
+    ports:
+      - "5433:5432"
