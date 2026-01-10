@@ -6,9 +6,7 @@ import shutil
 import os
 
 # Imposta le variabili d'ambiente PRIMA di importare qualsiasi modulo che usa settings
-test_keys_dir = tempfile.mkdtemp()
-os.environ["KMS_PRIVATE_KEY_PATH"] = str(Path(test_keys_dir) / "private")
-os.environ["KMS_PUBLIC_KEY_PATH"] = str(Path(test_keys_dir) / "public")
+# (Nessuna variabile per path chiavi necessaria ora che usiamo DB)
 
 from app.main import app
 
@@ -18,7 +16,8 @@ def setup_test_env():
     yield
     # Teardown
     try:
-        shutil.rmtree(test_keys_dir, ignore_errors=True)
+        # Pulizia risorse se necessario
+        pass
     except Exception:
         pass
 

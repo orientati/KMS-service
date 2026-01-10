@@ -5,9 +5,6 @@ class Settings(BaseSettings):
     SERVICE_NAME: str = "KMS service"
     SERVICE_VERSION: str = "0.1.0"
     SERVICE_PORT: int = 8000
-    PRIVATE_KEY_PATH: str = "./certs/private/"
-    PUBLIC_KEY_PATH: str = "./certs/public/"
-    PRIVATE_KEY_FILENAME: str = "private.pem"
     JWT_ALGORITHM: str = "RS256"
     ENVIRONMENT: str = "development"
     SENTRY_DSN: str = ""
