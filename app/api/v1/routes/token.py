@@ -1,4 +1,3 @@
-#from __future__ import annotations
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
@@ -11,9 +10,9 @@ router = APIRouter()
 
 
 @router.post("/create", response_model=TokenCreateResponse)
-def api_create_token(payload: TokenCreate) -> TokenCreateResponse:
+async def api_create_token(payload: TokenCreate) -> TokenCreateResponse:
     try:
-        token_str = create_token(payload)
+        token_str = await create_token(payload)
         return TokenCreateResponse(token=token_str)
     except OrientatiException as e:
         return JSONResponse(
@@ -25,9 +24,11 @@ def api_create_token(payload: TokenCreate) -> TokenCreateResponse:
             }
         )
 @router.post("/verify", response_model=TokenResponse)
-def api_verify_token(payload: TokenVerifyRequest) -> TokenResponse:
+async def api_verify_token(payload: TokenVerifyRequest) -> TokenResponse:
     try:
-        return verify_token(payload.token)
+        # Service returns a dict, FastAPI/Pydantic validates it against TokenResponse
+        result = await verify_token(payload.token)
+        return result
     except OrientatiException as e:
         return JSONResponse(
             status_code=e.status_code,

@@ -2,35 +2,74 @@ from __future__ import annotations
 
 import jwt
 import logging
-import shutil
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from typing import List, Optional
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
+from sqlalchemy import select, delete, desc
 
 from app.core.config import settings
-from app.schemas.token import TokenResponse, TokenCreate
+from app.db.session import SessionLocal
+from app.models.key_pair import KeyPair
 from app.services.http_client import OrientatiException
+from app.services.broker import AsyncBrokerSingleton
 
 logger = logging.getLogger(__name__)
 
-# Cache for keys
-_CACHED_PRIVATE_KEY: Optional[bytes] = None
-_CACHED_PUBLIC_KEYS: Optional[List[dict]] = None
+# Cache for keys (in-memory)
+_CACHED_PRIVATE_KEY: Optional[str] = None  # PEM string
+_CACHED_PUBLIC_KEYS: Optional[List[str]] = None # List of PEM strings
 _LAST_CACHE_UPDATE: Optional[datetime] = None
-_CACHE_TTL = timedelta(minutes=5)  # Refresh public keys list every 5 minutes
+_CACHE_TTL = timedelta(minutes=5)
 
-def _get_cached_private_key() -> bytes:
+
+async def _get_cached_private_key() -> str:
     global _CACHED_PRIVATE_KEY
     if _CACHED_PRIVATE_KEY is None:
-        private_key_path = get_current_private_key_path()
-        with open(private_key_path, "rb") as key_file:
-            _CACHED_PRIVATE_KEY = key_file.read()
+        # Fetch from DB
+        async with SessionLocal() as session:
+            # Get the most recent active key
+            result = await session.execute(
+                select(KeyPair)
+                .where(KeyPair.is_active == True)
+                .order_by(desc(KeyPair.created_at))
+                .limit(1)
+            )
+            key_pair = result.scalar_one_or_none()
+            
+            if key_pair:
+                _CACHED_PRIVATE_KEY = key_pair.private_key
+            else:
+                # No key found? Try to rotate (lazy init)
+                logger.warning("No active private key found in DB. Triggering rotation...")
+                rotation_result = await rotate_keys()
+                # rotation_result should populate DB and maybe cache, 
+                # but to be sure, we fetch again or use returned value if we refactor rotate_keys
+                # For safety/consistency with cache invalidation patterns, let's fetch again or recursive call
+                # But endless recursion risk if rotation fails.
+                
+                # Let's trust rotate_keys generated one.
+                if rotation_result.get('status') == 'success':
+                     async with SessionLocal() as session2:
+                        result2 = await session2.execute(
+                            select(KeyPair)
+                            .where(KeyPair.is_active == True)
+                            .order_by(desc(KeyPair.created_at))
+                            .limit(1)
+                        )
+                        kp2 = result2.scalar_one_or_none()
+                        if kp2:
+                             _CACHED_PRIVATE_KEY = kp2.private_key
+                        else:
+                             raise OrientatiException(message="Failed to retrieve key after rotation", status_code=500)
+                else:
+                    raise OrientatiException(message="Failed to rotate keys", status_code=500)
+
     return _CACHED_PRIVATE_KEY
 
-def _get_cached_public_keys(force_refresh: bool = False) -> List[bytes]:
+
+async def _get_cached_public_keys(force_refresh: bool = False) -> List[str]:
     global _CACHED_PUBLIC_KEYS, _LAST_CACHE_UPDATE
     
     now = datetime.now()
@@ -39,76 +78,106 @@ def _get_cached_public_keys(force_refresh: bool = False) -> List[bytes]:
         or force_refresh 
         or (_LAST_CACHE_UPDATE and now - _LAST_CACHE_UPDATE > _CACHE_TTL)
     ):
-        keys_info = list_available_public_keys()
-        loaded_keys = []
-        for key_info in keys_info:
-            try:
-                with open(key_info['path'], "rb") as key_file:
-                    loaded_keys.append(key_file.read())
-            except Exception as e:
-                logger.warning(f"Failed to load public key {key_info['path']}: {e}")
+        async with SessionLocal() as session:
+             # Fetch all valid public keys (e.g. active ones or recent ones)
+             # Assumption: We want keys that are active OR were recently active (to allow verification of slightly old tokens)
+             # For simpler logic: fetch all rows from DB is risky if many.
+             # Let's fetch last 5 active/inactive keys to be safe?
+             # Or just active ones. Implementation dependent.
+             # Let's just fetch all for now, assuming rotation isn't daily for 100 years.
+             # Better: fetch all active + ones created in last X days.
+             
+             # For now: fetch all from key_pairs table is likely okay if we clean up old ones.
+             
+            result = await session.execute(
+                select(KeyPair.public_key)
+                .order_by(desc(KeyPair.created_at))
+            )
+            _CACHED_PUBLIC_KEYS = result.scalars().all()
+            _LAST_CACHE_UPDATE = now
         
-        _CACHED_PUBLIC_KEYS = loaded_keys
-        _LAST_CACHE_UPDATE = now
-        
-    return _CACHED_PUBLIC_KEYS
+    return _CACHED_PUBLIC_KEYS or [] # Return empty list if None
+
 
 def _invalidate_cache():
+    logger.info("Invalidating local key cache")
     global _CACHED_PRIVATE_KEY, _CACHED_PUBLIC_KEYS, _LAST_CACHE_UPDATE
     _CACHED_PRIVATE_KEY = None
     _CACHED_PUBLIC_KEYS = None
     _LAST_CACHE_UPDATE = None
 
-def create_token(data: TokenCreate) -> str:
+
+import asyncio
+import functools
+
+async def create_token(data: dict) -> str:
     try:
-        private_key = _get_cached_private_key()
+        private_key_pem = await _get_cached_private_key()
         
+        # Load private key object
+        private_key = serialization.load_pem_private_key(
+            private_key_pem.encode('utf-8'),
+            password=None
+        )
+
         payload = data.model_dump()
         if "exp" not in payload:
             payload["exp"] = int((datetime.now(timezone.utc) + timedelta(minutes=data.expires_in)).timestamp())
 
-        token = jwt.encode(
-            payload,
-            private_key,
-            algorithm="RS256"
+        # Run CPU-bound jwt.encode in a thread pool
+        loop = asyncio.get_running_loop()
+        token = await loop.run_in_executor(
+            None, 
+            functools.partial(
+                jwt.encode,
+                payload,
+                private_key,
+                algorithm="RS256"
+            )
         )
         if isinstance(token, bytes):
             token = token.decode("utf-8")
         return token
     except Exception as e:
-         # Force refresh on error in case key file changed on disk but not in cache (unlikely but safe)
         _invalidate_cache()
         raise e
 
-def verify_token(token: str) -> TokenResponse:
-    from jwt import InvalidTokenError
 
+async def verify_token(token: str) -> dict:
+    from jwt import InvalidTokenError
+    
     try:
-        # Try with cached keys first
-        public_keys = _get_cached_public_keys()
+        public_keys_pems = await _get_cached_public_keys()
         
         last_exception = None
-        for public_key in public_keys:
+        loop = asyncio.get_running_loop()
+
+        for pem in public_keys_pems:
             try:
-                payload = jwt.decode(
-                    token,
-                    public_key,
-                    algorithms=["RS256"],
-                    options={"verify_aud": False}
+                public_key = serialization.load_pem_public_key(pem.encode('utf-8'))
+                
+                # Run CPU-bound jwt.decode in a thread pool
+                payload = await loop.run_in_executor(
+                    None,
+                    functools.partial(
+                        jwt.decode,
+                        token,
+                        public_key,
+                        algorithms=["RS256"],
+                        options={"verify_aud": False}
+                    )
                 )
                 
-                # If we get here, signature is valid
                 now = datetime.now(timezone.utc).timestamp()
                 exp = payload.get("exp", now + 1)
                 
                 expired = now > exp
-                response_data = {
+                return {
                     **payload,
                     "verified": True,
                     "expired": expired,
                     "expires_at": int(exp)
                 }
-                return TokenResponse(**response_data)
             except InvalidTokenError as e:
                 last_exception = e
                 continue
@@ -116,11 +185,6 @@ def verify_token(token: str) -> TokenResponse:
                 logger.error(f"Error decoding token with a key: {e}")
                 continue
 
-        # If we failed with all keys, maybe cache is stale? Try refreshing once.
-        # But only if we suspect missing keys, not just invalid signature
-        # Optimization: We could try refreshing if we haven't refreshed recently and signature failed
-        # For now, let's just return/raise based on last exception if no key worked
-        
         raise last_exception if last_exception else InvalidTokenError("No keys available for verification")
 
     except OrientatiException as e:
@@ -130,72 +194,62 @@ def verify_token(token: str) -> TokenResponse:
     except Exception as e:
         raise OrientatiException(exc=e, url="token/verify_token", status_code=401, message="Invalid Token", details={"message": "Unable to verify token"})
 
-def create_secret_keys() -> dict:
-    """
-    Crea una nuova coppia di chiavi RSA e gestisce la rotazione.
 
-    Returns:
-        dict: Informazioni sulla creazione delle chiavi
+async def create_secret_keys() -> dict:
+    """
+    Generates new RSA keys and stores in DB.
     """
     try:
-        private_dir = Path(settings.PRIVATE_KEY_PATH)
-        public_dir = Path(settings.PUBLIC_KEY_PATH)
-        private_dir.mkdir(parents=True, exist_ok=True)
-        public_dir.mkdir(parents=True, exist_ok=True)
-
-        # Genera timestamp per i nomi file
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        logger.info(f"Generating new key pair - id: {timestamp}")
 
-        logger.info(f"Inizio rotazione chiavi - timestamp: {timestamp}")
-
-        # Genera nuova coppia di chiavi RSA
+        # Generate RSA
         private_key = rsa.generate_private_key(
             public_exponent=65537,
             key_size=2048,
         )
         public_key = private_key.public_key()
 
-        # Backup della chiave privata attuale (se esiste)
-        current_private_path = private_dir / settings.PRIVATE_KEY_FILENAME
-        if current_private_path.exists():
-            backup_name = f"{timestamp}_old_private.pem"
-            backup_path = private_dir / backup_name
-            shutil.copy2(current_private_path, backup_path)
-            logger.info(f"Backup chiave privata creato: {backup_path}")
-
-        # Salva la nuova chiave privata (sostituisce quella esistente)
         pem_private = private_key.private_bytes(
             encoding=serialization.Encoding.PEM,
             format=serialization.PrivateFormat.PKCS8,
             encryption_algorithm=serialization.NoEncryption()
-        )
-
-        with open(current_private_path, 'wb') as f:
-            f.write(pem_private)
-
-        # Salva la nuova chiave pubblica con timestamp
-        public_filename = f"{timestamp}_public.pem"
-        public_path = public_dir / public_filename
+        ).decode('utf-8')
 
         pem_public = public_key.public_bytes(
             encoding=serialization.Encoding.PEM,
             format=serialization.PublicFormat.SubjectPublicKeyInfo
-        )
+        ).decode('utf-8')
 
-        with open(public_path, 'wb') as f:
-            f.write(pem_public)
+        # Store in DB
+        async with SessionLocal() as session:
+            # Optional: Mark old keys as inactive?
+            # For now just insert new one.
+            new_key = KeyPair(
+                kid=timestamp,
+                private_key=pem_private,
+                public_key=pem_public,
+                is_active=True
+            )
+            session.add(new_key)
+            await session.commit()
+            await session.refresh(new_key)
 
-        logger.info(f"Nuova chiave privata salvata: {current_private_path}")
-        logger.info(f"Nuova chiave pubblica salvata: {public_path}")
+        logger.info("New key pair saved to DB.")
+        
+        # Publish Event
+        broker = AsyncBrokerSingleton()
+        if await broker.connect():
+             await broker.publish_message(
+                 exchange_name="kms.events", 
+                 msg_type="KMS.KEY_ROTATED", 
+                 data={"kid": timestamp}
+             )
 
-        # Invalidate cache after rotation
         _invalidate_cache()
 
         return {
             'timestamp': timestamp,
-            'private_key_path': str(current_private_path),
-            'public_key_path': str(public_path),
-            'key_size': 2048,
             'status': 'success'
         }
 
@@ -203,181 +257,74 @@ def create_secret_keys() -> dict:
         raise OrientatiException(exc=e, url="token/create_secret_keys")
 
 
-def cleanup_old_public_keys(max_age_days: int = 30) -> List[str]:
+async def cleanup_old_keys(max_age_days: int = 30):
+    try:
+        if max_age_days <= 0: return
+
+        cutoff_date = datetime.utcnow() - timedelta(days=max_age_days)
+        
+        async with SessionLocal() as session:
+            # Delete keys older than cutoff
+            # Note: We might want to keep public keys longer? 
+            # For now, delete rows created < cutoff
+            
+            # Using execute delete
+            await session.execute(
+                delete(KeyPair).where(KeyPair.created_at < cutoff_date)
+            )
+            await session.commit()
+            
+        logger.info("Cleaned up old keys from DB.")
+        _invalidate_cache()
+    except Exception as e:
+        logger.error(f"Cleanup failed: {e}")
+
+
+async def rotate_keys() -> dict:
     """
-    Elimina le chiavi pubbliche più vecchie di max_age_days giorni.
-
-    Args:
-        max_age_days: Numero massimo di giorni per mantenere le chiavi pubbliche
-
-    Returns:
-        List[str]: Lista dei file eliminati
+    Coordinated rotation: checks if a recent key exists before creating a new one.
     """
     try:
-        public_dir = Path(settings.PUBLIC_KEY_PATH)
-        if not public_dir.exists():
-            return []
+        # 1. Lazy Check
+        async with SessionLocal() as session:
+             # Check for any key created in last 24h
+             recent_cutoff = datetime.utcnow() - timedelta(hours=24)
+             result = await session.execute(
+                select(KeyPair)
+                .where(KeyPair.created_at > recent_cutoff)
+                .limit(1)
+             )
+             recent_key = result.scalar_one_or_none()
+             
+             if recent_key:
+                 logger.info("A recent key already exists (created < 24h ago). Skipping rotation.")
+                 return {'status': 'skipped', 'reason': 'recent_key_exists'}
 
-        cutoff_date = datetime.now() - timedelta(days=max_age_days)
-        deleted_files = []
-
-        # Cerca tutti i file .pem nella directory pubblica
-        for file_path in public_dir.glob("*_public.pem"):
-            try:
-                # Estrae il timestamp dal nome del file
-                timestamp_str = file_path.stem.split('_')[0] + '_' + file_path.stem.split('_')[1]
-                file_date = datetime.strptime(timestamp_str, "%Y%m%d_%H%M%S")
-
-                # Se il file è troppo vecchio, lo elimina
-                if file_date < cutoff_date:
-                    file_path.unlink()
-                    deleted_files.append(str(file_path))
-                    logger.info(f"Chiave pubblica eliminata (troppo vecchia): {file_path}")
-
-            except (ValueError, IndexError) as e:
-                # Se non riesce a leggere la data dal nome, salta il file
-                logger.warning(f"Impossibile leggere la data dal file {file_path}: {e}")
-                continue
-
-        if deleted_files:
-            logger.info(f"Eliminate {len(deleted_files)} chiavi pubbliche obsolete")
-            # Invalidate cache if public keys changed
-            global _CACHED_PUBLIC_KEYS, _LAST_CACHE_UPDATE
-            _CACHED_PUBLIC_KEYS = None
-            _LAST_CACHE_UPDATE = None
-        else:
-            logger.info("Nessuna chiave pubblica obsoleta da eliminare")
-
-        return deleted_files
+        # 2. Create New Keys
+        return await create_secret_keys()
+        
+        # 3. Cleanup Old
+        # We can run cleanup async separately
+        # await cleanup_old_keys()
 
     except Exception as e:
-        raise OrientatiException(exc=e, url="token/cleanup_old_public_keys")
+        logger.error(f"Rotation failed: {e}")
+        return {'status': 'error', 'error': str(e)}
 
 
-def cleanup_old_private_backups(max_backups: int = 5) -> List[str]:
-    """
-    Mantiene solo gli ultimi N backup delle chiavi private.
-
-    Args:
-        max_backups: Numero massimo di backup da mantenere
-
-    Returns:
-        List[str]: Lista dei file eliminati
-    """
-    try:
-        private_dir = Path(settings.PRIVATE_KEY_PATH)
-        if not private_dir.exists():
-            return []
-
-        # Trova tutti i backup delle chiavi private
-        backup_files = list(private_dir.glob("*_old_private.pem"))
-
-        if len(backup_files) <= max_backups:
-            return []
-
-        # Ordina per data di modifica (più recente prima)
-        backup_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
-
-        # Elimina i backup più vecchi
-        deleted_files = []
-        for old_backup in backup_files[max_backups:]:
-            old_backup.unlink()
-            deleted_files.append(str(old_backup))
-            logger.info(f"Backup privato eliminato: {old_backup}")
-
-        logger.info(f"Eliminati {len(deleted_files)} backup privati obsoleti")
-        return deleted_files
-
-    except Exception as e:
-        raise OrientatiException(exc=e, url="token/cleanup_old_private_backups")
-
-
-def rotate_keys(cleanup_public_days: int = 30, max_private_backups: int = 5) -> dict:
-    """
-    Esegue la rotazione completa delle chiavi: crea nuove chiavi e pulisce quelle vecchie.
-
-    Args:
-        cleanup_public_days: Giorni dopo i quali eliminare le chiavi pubbliche
-        max_private_backups: Numero massimo di backup privati da mantenere
-
-    Returns:
-        dict: Risultato dell'operazione di rotazione
-    """
-    try:
-        logger.info("Inizio rotazione completa delle chiavi")
-
-        # Crea nuove chiavi
-        key_result = create_secret_keys()
-
-        # Pulisci chiavi pubbliche vecchie
-        deleted_public = cleanup_old_public_keys(cleanup_public_days)
-
-        # Pulisci backup privati vecchi
-        deleted_private_backups = cleanup_old_private_backups(max_private_backups)
-
-        result = {
-            **key_result,
-            'deleted_public_keys': deleted_public,
-            'deleted_private_backups': deleted_private_backups,
-            'cleanup_summary': {
-                'public_keys_deleted': len(deleted_public),
-                'private_backups_deleted': len(deleted_private_backups)
-            }
+async def list_available_public_keys() -> List[dict]:
+    # Used for API response potentially
+    async with SessionLocal() as session:
+        result = await session.execute(
+            select(KeyPair).order_by(desc(KeyPair.created_at))
+        )
+        keys = result.scalars().all()
+        
+    return [
+        {
+            'kid': k.kid,
+            'created_at': k.created_at,
+            'is_active': k.is_active
         }
-
-        logger.info("Rotazione chiavi completata con successo")
-        return result
-
-    except Exception as e:
-        raise OrientatiException(exc=e, url="token/rotate_keys")
-
-
-def get_current_private_key_path() -> str:
-    """
-    Restituisce il percorso della chiave privata attualmente attiva.
-    Se la chiave non esiste, la crea tramite rotate_keys().
-
-    Returns:
-        str: Percorso della chiave privata attiva
-    """
-    private_key_path = Path(settings.PRIVATE_KEY_PATH) / settings.PRIVATE_KEY_FILENAME
-    if not private_key_path.exists():
-        rotate_keys()
-    return str(private_key_path)
-
-def list_available_public_keys() -> List[dict]:
-    """
-    Lista tutte le chiavi pubbliche disponibili con le loro informazioni.
-
-    Returns:
-        List[dict]: Lista delle chiavi pubbliche con timestamp e percorso
-    """
-    try:
-        public_dir = Path(settings.PUBLIC_KEY_PATH)
-        if not public_dir.exists():
-            return []
-
-        public_keys = []
-        for file_path in public_dir.glob("*_public.pem"):
-            try:
-                # Estrae il timestamp dal nome del file
-                timestamp_str = file_path.stem.split('_')[0] + '_' + file_path.stem.split('_')[1]
-                file_date = datetime.strptime(timestamp_str, "%Y%m%d_%H%M%S")
-
-                public_keys.append({
-                    'timestamp': timestamp_str,
-                    'date': file_date,
-                    'path': str(file_path),
-                    'age_days': (datetime.now() - file_date).days
-                })
-
-            except (ValueError, IndexError):
-                continue
-
-        # Ordina per data (più recente prima)
-        public_keys.sort(key=lambda x: x['date'], reverse=True)
-
-        return public_keys
-
-    except Exception as e:
-        raise OrientatiException(exc=e, url="token/list_available_public_keys")
+        for k in keys
+    ]
