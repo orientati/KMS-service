@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import functools
 import jwt
 import logging
 from datetime import datetime, timedelta, timezone

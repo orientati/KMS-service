@@ -1,27 +1,25 @@
 import pytest
-from fastapi.testclient import TestClient
-from pathlib import Path
-import tempfile
-import shutil
-import os
-
-# Imposta le variabili d'ambiente PRIMA di importare qualsiasi modulo che usa settings
-# (Nessuna variabile per path chiavi necessaria ora che usiamo DB)
-
+from httpx import AsyncClient, ASGITransport
+from unittest.mock import AsyncMock, patch
 from app.main import app
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_test_env():
-    # Setup
     yield
-    # Teardown
-    try:
-        # Pulizia risorse se necessario
-        pass
-    except Exception:
-        pass
 
 @pytest.fixture(scope="function")
-def client():
-    with TestClient(app) as c:
-        yield c
+async def client():
+    # Mock RabbitMQ Broker
+    with patch("app.services.broker.AsyncBrokerSingleton") as MockBroker:
+        mock_broker = AsyncMock()
+        MockBroker.return_value = mock_broker
+        mock_broker.connect.return_value = True
+        
+        # Mock Scheduler
+        with patch("app.main.AsyncIOScheduler") as MockScheduler:
+            mock_scheduler = AsyncMock()
+            MockScheduler.return_value = mock_scheduler
+            
+            # Use AsyncClient for async tests
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+                yield c
