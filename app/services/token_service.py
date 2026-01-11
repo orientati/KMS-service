@@ -37,6 +37,42 @@ async def _get_cached_private_key() -> str:
                 .where(KeyPair.is_active == True)
                 .order_by(desc(KeyPair.created_at))
                 .limit(1)
+    try:
+        private_key = _get_cached_private_key()
+        
+        payload = data.model_dump()
+        if "exp" not in payload:
+            payload["exp"] = int((datetime.now(timezone.utc) + timedelta(minutes=data.expires_in)).timestamp())
+
+        token = jwt.encode(
+            payload,
+            private_key,
+            algorithm="RS256"
+        )
+        if isinstance(token, bytes):
+            token = token.decode("utf-8")
+        return token
+    except Exception as e:
+         # Force refresh on error in case key file changed on disk but not in cache (unlikely but safe)
+        _invalidate_cache()
+        raise e
+
+def verify_token(token: str) -> TokenResponse:
+    from jwt import InvalidTokenError
+
+<<<<<<< Updated upstream
+    public_keys = list_available_public_keys()
+    last_error = None
+    for key_info in public_keys:
+        try:
+            with open(key_info['path'], "rb") as key_file:
+                public_key = key_file.read()
+            payload = jwt.decode(
+                token,
+                public_key,
+                algorithms=["RS256"],
+                options={"verify_aud": False}
+>>>>>>> Stashed changes
             )
             key_pair = result.scalar_one_or_none()
             
@@ -69,7 +105,6 @@ async def _get_cached_private_key() -> str:
                     raise OrientatiException(message="Failed to rotate keys", status_code=500)
 
     return _CACHED_PRIVATE_KEY
-
 
 async def _get_cached_public_keys(force_refresh: bool = False) -> List[str]:
     global _CACHED_PUBLIC_KEYS, _LAST_CACHE_UPDATE
@@ -242,6 +277,9 @@ async def create_secret_keys() -> dict:
                  data={"kid": timestamp}
              )
 
+        _invalidate_cache()
+
+        # Invalidate cache after rotation
         _invalidate_cache()
 
         return {
