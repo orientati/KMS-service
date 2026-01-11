@@ -16,6 +16,7 @@ from app.db.session import SessionLocal
 from app.models.key_pair import KeyPair
 from app.services.http_client import OrientatiException
 from app.services.broker import AsyncBrokerSingleton
+from app.schemas.token import TokenCreate, TokenResponse
 
 logger = logging.getLogger(__name__)
 
@@ -37,42 +38,6 @@ async def _get_cached_private_key() -> str:
                 .where(KeyPair.is_active == True)
                 .order_by(desc(KeyPair.created_at))
                 .limit(1)
-    try:
-        private_key = _get_cached_private_key()
-        
-        payload = data.model_dump()
-        if "exp" not in payload:
-            payload["exp"] = int((datetime.now(timezone.utc) + timedelta(minutes=data.expires_in)).timestamp())
-
-        token = jwt.encode(
-            payload,
-            private_key,
-            algorithm="RS256"
-        )
-        if isinstance(token, bytes):
-            token = token.decode("utf-8")
-        return token
-    except Exception as e:
-         # Force refresh on error in case key file changed on disk but not in cache (unlikely but safe)
-        _invalidate_cache()
-        raise e
-
-def verify_token(token: str) -> TokenResponse:
-    from jwt import InvalidTokenError
-
-<<<<<<< Updated upstream
-    public_keys = list_available_public_keys()
-    last_error = None
-    for key_info in public_keys:
-        try:
-            with open(key_info['path'], "rb") as key_file:
-                public_key = key_file.read()
-            payload = jwt.decode(
-                token,
-                public_key,
-                algorithms=["RS256"],
-                options={"verify_aud": False}
->>>>>>> Stashed changes
             )
             key_pair = result.scalar_one_or_none()
             
@@ -82,13 +47,14 @@ def verify_token(token: str) -> TokenResponse:
                 # No key found? Try to rotate (lazy init)
                 logger.warning("No active private key found in DB. Triggering rotation...")
                 rotation_result = await rotate_keys()
-                # rotation_result should populate DB and maybe cache, 
-                # but to be sure, we fetch again or use returned value if we refactor rotate_keys
-                # For safety/consistency with cache invalidation patterns, let's fetch again or recursive call
-                # But endless recursion risk if rotation fails.
                 
-                # Let's trust rotate_keys generated one.
                 if rotation_result.get('status') == 'success':
+                     # After successful rotation, the cache should be invalidated,
+                     # so we can re-fetch the newly created key.
+                     # For simplicity and to avoid recursive calls, we'll re-query the DB.
+                     # _invalidate_cache() is called by rotate_keys, so _CACHED_PRIVATE_KEY is None.
+                     # We can either call this function recursively (carefully) or re-query.
+                     # Re-querying here is safer.
                      async with SessionLocal() as session2:
                         result2 = await session2.execute(
                             select(KeyPair)
@@ -106,48 +72,21 @@ def verify_token(token: str) -> TokenResponse:
 
     return _CACHED_PRIVATE_KEY
 
-async def _get_cached_public_keys(force_refresh: bool = False) -> List[str]:
-    global _CACHED_PUBLIC_KEYS, _LAST_CACHE_UPDATE
-    
-    now = datetime.now()
-    if (
-        _CACHED_PUBLIC_KEYS is None 
-        or force_refresh 
-        or (_LAST_CACHE_UPDATE and now - _LAST_CACHE_UPDATE > _CACHE_TTL)
-    ):
-        async with SessionLocal() as session:
-             # Fetch all valid public keys (e.g. active ones or recent ones)
-             # Assumption: We want keys that are active OR were recently active (to allow verification of slightly old tokens)
-             # For simpler logic: fetch all rows from DB is risky if many.
-             # Let's fetch last 5 active/inactive keys to be safe?
-             # Recupera tutte le chiavi pubbliche (es. attive o recenti)
-             # Per semplicità recuperiamo tutte le chiavi ordinate per data di creazione
-             
-            result = await session.execute(
-                select(KeyPair.public_key)
-                .order_by(desc(KeyPair.created_at))
-            )
-            _CACHED_PUBLIC_KEYS = result.scalars().all()
-            _LAST_CACHE_UPDATE = now
-        
-    return _CACHED_PUBLIC_KEYS or [] # Ritorna lista vuota se None
-
 
 def _invalidate_cache():
-    logger.info("Invalidazione cache locale delle chiavi")
     global _CACHED_PRIVATE_KEY, _CACHED_PUBLIC_KEYS, _LAST_CACHE_UPDATE
     _CACHED_PRIVATE_KEY = None
     _CACHED_PUBLIC_KEYS = None
     _LAST_CACHE_UPDATE = None
 
 
-async def create_token(data: dict) -> str:
+async def create_token(data: TokenCreate) -> str:
     try:
-        private_key_pem = await _get_cached_private_key()
+        private_key = await _get_cached_private_key()
         
-        # Carica oggetto chiave privata
-        private_key = serialization.load_pem_private_key(
-            private_key_pem.encode('utf-8'),
+        # Load object
+        private_key_obj = serialization.load_pem_private_key(
+            private_key.encode('utf-8'),
             password=None
         )
 
@@ -155,14 +94,14 @@ async def create_token(data: dict) -> str:
         if "exp" not in payload:
             payload["exp"] = int((datetime.now(timezone.utc) + timedelta(minutes=data.expires_in)).timestamp())
 
-        # Esegui jwt.encode (CPU-bound) in un thread pool
+        # Thread pool for cpu bound
         loop = asyncio.get_running_loop()
         token = await loop.run_in_executor(
             None, 
             functools.partial(
                 jwt.encode,
                 payload,
-                private_key,
+                private_key_obj,
                 algorithm="RS256"
             )
         )
@@ -172,6 +111,29 @@ async def create_token(data: dict) -> str:
     except Exception as e:
         _invalidate_cache()
         raise e
+
+
+async def _get_cached_public_keys(force_refresh: bool = False) -> List[str]:
+    global _CACHED_PUBLIC_KEYS, _LAST_CACHE_UPDATE
+    
+    now = datetime.now(timezone.utc)
+    
+    if (
+        _CACHED_PUBLIC_KEYS is None 
+        or force_refresh 
+        or (_LAST_CACHE_UPDATE and now - _LAST_CACHE_UPDATE > _CACHE_TTL)
+    ):
+        async with SessionLocal() as session:
+            result = await session.execute(
+                select(KeyPair.public_key)
+                .where(KeyPair.is_active == True)
+                .order_by(desc(KeyPair.created_at))
+            )
+            keys = result.scalars().all()
+            _CACHED_PUBLIC_KEYS = list(keys)
+            _LAST_CACHE_UPDATE = now
+            
+    return _CACHED_PUBLIC_KEYS
 
 
 async def verify_token(token: str) -> dict:
