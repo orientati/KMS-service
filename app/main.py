@@ -15,6 +15,7 @@ from app.core.config import settings
 from app.core.logging import setup_logging
 from app.services.broker import AsyncBrokerSingleton
 from app.services.event_handlers import handle_key_rotated
+from app.services.token_service import rotate_keys
 
 sentry_sdk.init(
     dsn=settings.SENTRY_DSN,
