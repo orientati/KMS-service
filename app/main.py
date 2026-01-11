@@ -16,7 +16,6 @@ from app.core.logging import setup_logging
 from app.services.broker import AsyncBrokerSingleton
 from app.services.event_handlers import handle_key_rotated
 from app.services.token_service import rotate_keys
-from app.services.token_service import rotate_keys
 
 sentry_sdk.init(
     dsn=settings.SENTRY_DSN,
@@ -27,6 +26,8 @@ sentry_sdk.init(
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    from app.core.logging import get_logger
+    logger = get_logger(__name__)
     setup_logging()
     
     # Sottoscrizione eventi RabbitMQ
@@ -35,18 +36,26 @@ async def lifespan(app: FastAPI):
         await broker.connect()
         await broker.subscribe("kms.events", handle_key_rotated)
     except Exception as e:
-        # Logga l'errore ma non bloccare l'avvio se RabbitMQ non è raggiungibile
-        from app.core.logging import get_logger
-        logger = get_logger(__name__)
         logger.error(f"Impossibile sottoscriversi agli eventi RabbitMQ: {e}")
 
     # Setup Scheduler
     scheduler = AsyncIOScheduler()
-    # Esegue rotate_keys ogni settimana (domenica) alle 2:00
     scheduler.add_job(rotate_keys, CronTrigger(day_of_week='sun', hour=2, minute=0))
     scheduler.start()
+    
     yield
-    scheduler.shutdown()
+    try:
+        # Recupera l'istanza del broker per chiuderla
+        broker = AsyncBrokerSingleton()
+        await broker.close()
+        
+        scheduler.shutdown()
+        
+        # Flush Sentry events
+        import sentry_sdk
+        sentry_sdk.flush(timeout=2.0)
+    except Exception as e:
+        logger.error(f"Errore durante lo shutdown: {e}")
 
 
 app = FastAPI(

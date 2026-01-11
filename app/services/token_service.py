@@ -193,7 +193,7 @@ async def create_secret_keys() -> dict:
     Genera nuove chiavi RSA e le salva nel DB.
     """
     try:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         logger.info(f"Generating new key pair - id: {timestamp}")
 
         # Generate RSA
@@ -257,7 +257,7 @@ async def cleanup_old_keys(max_age_days: int = 30):
     try:
         if max_age_days <= 0: return
 
-        cutoff_date = datetime.utcnow() - timedelta(days=max_age_days)
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=max_age_days)
         
         async with SessionLocal() as session:
             # Delete keys older than cutoff
@@ -284,7 +284,7 @@ async def rotate_keys() -> dict:
         # 1. Lazy Check
         async with SessionLocal() as session:
              # Check for any key created in last 24h
-             recent_cutoff = datetime.utcnow() - timedelta(hours=24)
+             recent_cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
              result = await session.execute(
                 select(KeyPair)
                 .where(KeyPair.created_at > recent_cutoff)
