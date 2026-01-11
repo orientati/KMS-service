@@ -1,28 +1,31 @@
-from fastapi.testclient import TestClient
+import pytest
+from httpx import AsyncClient
 
-def _create_token(client: TestClient) -> str:
+async def _create_token(client: AsyncClient) -> str:
     payload = {
         "user_id": 123,
         "session_id": 456,
         "expires_in": 60
     }
-    response = client.post("/api/v1/token/create", json=payload)
+    response = await client.post("/api/v1/token/create", json=payload)
     assert response.status_code == 200
     data = response.json()
     assert "token" in data
     assert isinstance(data["token"], str)
     return data["token"]
 
-def test_create_token(client: TestClient):
+@pytest.mark.asyncio
+async def test_create_token(client: AsyncClient):
     # Just call the helper which performs assertions
-    _create_token(client)
+    await _create_token(client)
 
-def test_verify_token(client: TestClient):
+@pytest.mark.asyncio
+async def test_verify_token(client: AsyncClient):
     # First create a token using helper
-    token = _create_token(client)
+    token = await _create_token(client)
     
     # Then verify it
-    response = client.post("/api/v1/token/verify", json={"token": token})
+    response = await client.post("/api/v1/token/verify", json={"token": token})
     assert response.status_code == 200
     data = response.json()
     assert data["verified"] is True
@@ -31,8 +34,9 @@ def test_verify_token(client: TestClient):
     assert data["expired"] is False
     assert "expires_at" in data
 
-def test_verify_invalid_token(client: TestClient):
-    response = client.post("/api/v1/token/verify", json={"token": "invalid_token_string"})
+@pytest.mark.asyncio
+async def test_verify_invalid_token(client: AsyncClient):
+    response = await client.post("/api/v1/token/verify", json={"token": "invalid_token_string"})
     # Expecting 401 as per exception handling in token service
     assert response.status_code == 401
     data = response.json()
