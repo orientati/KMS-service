@@ -1,0 +1,43 @@
+# Version Control
+.git/
+.gitignore
+
+# Environment Variables & Secrets
+.env
+.env.example
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+env/
+pip-log.txt
+
+# Testing & Linting
+.pytest_cache/
+.flake8
+.coverage
+htmlcov/
+tests/
+
+# IDE & Editor
+.idea/
+.vscode/
+
+# Local Data
+*.db
+*.sqlite3
+database.db
+
+# Docker
+docker-compose.yml
+docker-compose.override.yml
+.dockerignore
+
+# Dependency Lock Files (Optional: keep if needed for consistent installs, usually kept)
+# poetry.lock
+# pyproject.toml
