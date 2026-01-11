@@ -7,7 +7,7 @@ COPY pyproject.toml poetry.lock* /app/
 RUN poetry config virtualenvs.create false \
     && poetry install --only main --no-interaction --no-ansi --no-root
 # ---- Runtime stage ----
-FROM python:3.11-slim
+FROM python:3.13-slim
 WORKDIR /app
 ENV PYTHONUNBUFFERED=1
 COPY --from=builder /usr/local /usr/local
