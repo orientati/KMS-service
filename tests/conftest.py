@@ -1,14 +1,19 @@
+import os
 import pytest
 import asyncio
 from httpx import AsyncClient, ASGITransport
 from unittest.mock import AsyncMock, MagicMock, patch
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 
-# Import app modules
-# Note: config settings might be loaded here, so we patch before usage
+# Force a clean environment for tests
+TEST_DB_PATH = "test_kms.db"
+os.environ["KMS_DATABASE_URL"] = f"sqlite+aiosqlite:///./{TEST_DB_PATH}"
+os.environ["KMS_ENVIRONMENT"] = "testing"
+os.environ["KMS_SENTRY_DSN"] = ""
+
+# Now import app modules
 from app.main import app as fastapi_app
 from app.db.base import Base
-# We need to access where SessionLocal is defined
 import app.db.session
 
 @pytest.fixture(scope="function", autouse=True)
@@ -31,39 +36,37 @@ def mock_external_deps():
 @pytest.fixture(scope="function", autouse=True)
 async def setup_test_db():
     """
-    Create an in-memory SQLite database, create tables, and patch SessionLocal.
+    Create tables in the global in-memory SQLite database.
     """
-    # Create in-memory async engine
-    test_engine = create_async_engine(
-        "sqlite+aiosqlite:///:memory:",
-        future=True,
-        echo=False
-    )
+    from app.db.session import engine
+    from app.db.base import Base, import_models
+    
+    # Load models
+    import_models()
     
     # Create tables
-    async with test_engine.begin() as conn:
+    async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         
-    # Create a test session maker
-    TestSessionLocal = async_sessionmaker(
-        bind=test_engine,
-        class_=AsyncSession,
-        expire_on_commit=False,
-        autoflush=False,
-        autocommit=False
-    )
-    
-    # Patch the global SessionLocal in app.db.session
-    with patch("app.db.session.SessionLocal", TestSessionLocal):
-        yield
+    yield
         
-    # Teardown
-    async with test_engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
-    await test_engine.dispose()
+    # Critical: dispose the engine before deleting the file
+    await engine.dispose()
+    
+    # Reset Broker Singleton and Token Service Cache to avoid leakage
+    from app.services.broker import AsyncBrokerSingleton
+    from app.services import token_service
+    AsyncBrokerSingleton._instance = None
+    token_service._invalidate_cache()
+    
+    # Delete the test database file
+    if os.path.exists(TEST_DB_PATH):
+        try:
+            os.remove(TEST_DB_PATH)
+        except Exception as e:
+            pass
 
 @pytest.fixture(scope="function")
 async def client():
     async with AsyncClient(transport=ASGITransport(app=fastapi_app), base_url="http://test") as c:
         yield c
-

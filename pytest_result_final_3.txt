@@ -1,0 +1,119 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.7, pytest-8.4.2, pluggy-1.6.0 -- C:\Users\fedez\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\fedez\Desktop\orientati\backend\KMS-service
+configfile: pyproject.toml
+plugins: anyio-4.12.1, asyncio-1.3.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=function, asyncio_default_test_loop_scope=function
+collecting ... collected 7 items
+
+tests/test_health.py::test_health_check PASSED                           [ 14%]
+tests/test_kms_unit.py::test_get_cached_private_key_hit_db PASSED        [ 28%]
+tests/test_kms_unit.py::test_get_cached_private_key_triggers_rotation PASSED [ 42%]
+tests/test_kms_unit.py::test_create_secret_keys PASSED                   [ 57%]
+tests/test_token.py::test_create_token PASSED                            [ 71%]
+tests/test_token.py::test_verify_token FAILED                            [ 85%]
+tests/test_token.py::test_verify_invalid_token PASSED                    [100%]
+
+================================== FAILURES ===================================
+______________________________ test_verify_token ______________________________
+
+client = <httpx.AsyncClient object at 0x00000171A602B4D0>
+
+    @pytest.mark.asyncio
+    async def test_verify_token(client: AsyncClient):
+        # First create a token using helper
+        token = await _create_token(client)
+    
+        # Then verify it
+        response = await client.post("/api/v1/token/verify", json={"token": token})
+>       assert response.status_code == 200
+E       assert 401 == 200
+E        +  where 401 = <Response [401 Unauthorized]>.status_code
+
+tests\test_token.py:29: AssertionError
+---------------------------- Captured stdout setup ----------------------------
+
+DEBUG: Mocking external deps...
+DEBUG: Setting up test DB...
+2026-01-11 03:10:02,764 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-01-11 03:10:02,765 INFO sqlalchemy.engine.Engine PRAGMA main.table_info("key_pairs")
+2026-01-11 03:10:02,765 INFO sqlalchemy.engine.Engine [raw sql] ()
+2026-01-11 03:10:02,766 INFO sqlalchemy.engine.Engine PRAGMA temp.table_info("key_pairs")
+2026-01-11 03:10:02,766 INFO sqlalchemy.engine.Engine [raw sql] ()
+2026-01-11 03:10:02,767 INFO sqlalchemy.engine.Engine 
+CREATE TABLE key_pairs (
+	id INTEGER NOT NULL, 
+	kid VARCHAR(255) NOT NULL, 
+	private_key TEXT NOT NULL, 
+	public_key TEXT NOT NULL, 
+	created_at DATETIME NOT NULL, 
+	is_active BOOLEAN NOT NULL, 
+	PRIMARY KEY (id)
+)
+
+
+2026-01-11 03:10:02,767 INFO sqlalchemy.engine.Engine [no key 0.00020s] ()
+2026-01-11 03:10:02,773 INFO sqlalchemy.engine.Engine CREATE UNIQUE INDEX ix_key_pairs_kid ON key_pairs (kid)
+2026-01-11 03:10:02,773 INFO sqlalchemy.engine.Engine [no key 0.00028s] ()
+2026-01-11 03:10:02,778 INFO sqlalchemy.engine.Engine CREATE INDEX ix_key_pairs_id ON key_pairs (id)
+2026-01-11 03:10:02,778 INFO sqlalchemy.engine.Engine [no key 0.00024s] ()
+2026-01-11 03:10:02,782 INFO sqlalchemy.engine.Engine COMMIT
+----------------------------- Captured log setup ------------------------------
+INFO     sqlalchemy.engine.Engine:base.py:2710 BEGIN (implicit)
+INFO     sqlalchemy.engine.Engine:base.py:1846 PRAGMA main.table_info("key_pairs")
+INFO     sqlalchemy.engine.Engine:base.py:1846 [raw sql] ()
+INFO     sqlalchemy.engine.Engine:base.py:1846 PRAGMA temp.table_info("key_pairs")
+INFO     sqlalchemy.engine.Engine:base.py:1846 [raw sql] ()
+INFO     sqlalchemy.engine.Engine:base.py:1846 
+CREATE TABLE key_pairs (
+	id INTEGER NOT NULL, 
+	kid VARCHAR(255) NOT NULL, 
+	private_key TEXT NOT NULL, 
+	public_key TEXT NOT NULL, 
+	created_at DATETIME NOT NULL, 
+	is_active BOOLEAN NOT NULL, 
+	PRIMARY KEY (id)
+)
+
+
+INFO     sqlalchemy.engine.Engine:base.py:1846 [no key 0.00020s] ()
+INFO     sqlalchemy.engine.Engine:base.py:1846 CREATE UNIQUE INDEX ix_key_pairs_kid ON key_pairs (kid)
+INFO     sqlalchemy.engine.Engine:base.py:1846 [no key 0.00028s] ()
+INFO     sqlalchemy.engine.Engine:base.py:1846 CREATE INDEX ix_key_pairs_id ON key_pairs (id)
+INFO     sqlalchemy.engine.Engine:base.py:1846 [no key 0.00024s] ()
+INFO     sqlalchemy.engine.Engine:base.py:2716 COMMIT
+---------------------------- Captured stdout call -----------------------------
+2026-01-11 03:10:02,815 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-01-11 03:10:02,815 INFO sqlalchemy.engine.Engine SELECT key_pairs.public_key 
+FROM key_pairs 
+WHERE key_pairs.is_active = 1 ORDER BY key_pairs.created_at DESC
+2026-01-11 03:10:02,815 INFO sqlalchemy.engine.Engine [generated in 0.00022s] ()
+2026-01-11 03:10:02,816 INFO sqlalchemy.engine.Engine ROLLBACK
+------------------------------ Captured log call ------------------------------
+INFO     httpx:_client.py:1740 HTTP Request: POST http://test/api/v1/token/create "HTTP/1.1 200 OK"
+INFO     sqlalchemy.engine.Engine:base.py:2710 BEGIN (implicit)
+INFO     sqlalchemy.engine.Engine:base.py:1846 SELECT key_pairs.public_key 
+FROM key_pairs 
+WHERE key_pairs.is_active = 1 ORDER BY key_pairs.created_at DESC
+INFO     sqlalchemy.engine.Engine:base.py:1846 [generated in 0.00022s] ()
+INFO     sqlalchemy.engine.Engine:base.py:2713 ROLLBACK
+WARNING  app.services.http_client:http_client.py:133 OrientatiException: Token non valido (Status: 401) - URL: token/verify_token
+INFO     httpx:_client.py:1740 HTTP Request: POST http://test/api/v1/token/verify "HTTP/1.1 401 Unauthorized"
+-------------------------- Captured stdout teardown ---------------------------
+DEBUG: Tearing down test DB...
+DEBUG: Test DB teardown complete.
+DEBUG: Un-mocking external deps...
+============================== warnings summary ===============================
+tests/test_token.py::test_create_token
+  C:\Users\fedez\Desktop\orientati\backend\KMS-service\app\services\token_service.py:287: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    recent_cutoff = datetime.utcnow() - timedelta(hours=24)
+
+tests/test_token.py::test_create_token
+  C:\Users\fedez\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sqlalchemy\sql\schema.py:3624: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    return util.wrap_callable(lambda ctx: fn(), fn)  # type: ignore
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_token.py::test_verify_token - assert 401 == 200
+=================== 1 failed, 6 passed, 2 warnings in 0.68s ===================

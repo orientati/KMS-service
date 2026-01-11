@@ -1,0 +1,443 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.7, pytest-8.4.2, pluggy-1.6.0 -- C:\Users\fedez\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\fedez\Desktop\orientati\backend\KMS-service
+configfile: pyproject.toml
+plugins: anyio-4.12.1, asyncio-1.3.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=function, asyncio_default_test_loop_scope=function
+collecting ... collected 7 items
+
+tests/test_health.py::test_health_check PASSED                           [ 14%]
+tests/test_kms_unit.py::test_get_cached_private_key_hit_db PASSED        [ 28%]
+tests/test_kms_unit.py::test_get_cached_private_key_triggers_rotation PASSED [ 42%]
+tests/test_kms_unit.py::test_create_secret_keys PASSED                   [ 57%]
+tests/test_token.py::test_create_token FAILED                            [ 71%]
+tests/test_token.py::test_verify_token FAILED                            [ 85%]
+tests/test_token.py::test_verify_invalid_token PASSED                    [100%]
+
+================================== FAILURES ===================================
+______________________________ test_create_token ______________________________
+
+client = <httpx.AsyncClient object at 0x0000015B78D1F390>
+
+    @pytest.mark.asyncio
+    async def test_create_token(client: AsyncClient):
+        # Just call the helper which performs assertions
+>       await _create_token(client)
+
+tests\test_token.py:20: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\test_token.py:10: in _create_token
+    response = await client.post("/api/v1/token/create", json=payload)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\httpx\_client.py:1859: in post
+    return await self.request(
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\httpx\_client.py:1540: in request
+    return await self.send(request, auth=auth, follow_redirects=follow_redirects)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sentry_sdk\integrations\httpx.py:147: in send
+    rv = await real_send(self, request, **kwargs)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\httpx\_client.py:1629: in send
+    response = await self._send_handling_auth(
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\httpx\_client.py:1657: in _send_handling_auth
+    response = await self._send_handling_redirects(
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\httpx\_client.py:1694: in _send_handling_redirects
+    response = await self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\httpx\_client.py:1730: in _send_single_request
+    response = await transport.handle_async_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\httpx\_transports\asgi.py:170: in handle_async_request
+    await self.app(scope, receive, send)
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\fastapi\applications.py:1054: in __call__
+    await super().__call__(scope, receive, send)
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sentry_sdk\integrations\starlette.py:416: in _sentry_patched_asgi_app
+    return await middleware(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sentry_sdk\integrations\asgi.py:170: in _run_asgi3
+    return await self._run_app(scope, receive, send, asgi_version=3)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sentry_sdk\integrations\asgi.py:262: in _run_app
+    raise exc from None
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sentry_sdk\integrations\asgi.py:257: in _run_app
+    return await self.app(
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\starlette\applications.py:113: in __call__
+    await self.middleware_stack(scope, receive, send)
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sentry_sdk\integrations\starlette.py:164: in _create_span_call
+    return await old_call(app, scope, receive, send, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\starlette\middleware\errors.py:186: in __call__
+    raise exc
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\starlette\middleware\errors.py:164: in __call__
+    await self.app(scope, receive, _send)
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sentry_sdk\integrations\starlette.py:303: in _sentry_exceptionmiddleware_call
+    await old_call(self, scope, receive, send)
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sentry_sdk\integrations\starlette.py:164: in _create_span_call
+    return await old_call(app, scope, receive, send, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\starlette\middleware\exceptions.py:63: in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\starlette\_exception_handler.py:53: in wrapped_app
+    raise exc
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\starlette\_exception_handler.py:42: in wrapped_app
+    await app(scope, receive, sender)
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\starlette\routing.py:716: in __call__
+    await self.middleware_stack(scope, receive, send)
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\starlette\routing.py:736: in app
+    await route.handle(scope, receive, send)
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\starlette\routing.py:290: in handle
+    await self.app(scope, receive, send)
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\starlette\routing.py:78: in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\starlette\_exception_handler.py:53: in wrapped_app
+    raise exc
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\starlette\_exception_handler.py:42: in wrapped_app
+    await app(scope, receive, sender)
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\starlette\routing.py:75: in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sentry_sdk\integrations\fastapi.py:132: in _sentry_app
+    return await old_app(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\fastapi\routing.py:302: in app
+    raw_response = await run_endpoint_function(
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\fastapi\routing.py:213: in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app\api\v1\routes\token.py:15: in api_create_token
+    token_str = await create_token(payload)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app\services\token_service.py:113: in create_token
+    raise e
+app\services\token_service.py:85: in create_token
+    private_key = await _get_cached_private_key()
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app\services\token_service.py:36: in _get_cached_private_key
+    result = await session.execute(
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sqlalchemy\ext\asyncio\session.py:449: in execute
+    result = await greenlet_spawn(
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py:201: in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sqlalchemy\orm\session.py:2351: in execute
+    return self._execute_internal(
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sqlalchemy\orm\session.py:2249: in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sqlalchemy\orm\context.py:306: in orm_execute_statement
+    result = conn.execute(
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sqlalchemy\engine\base.py:1419: in execute
+    return meth(
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sqlalchemy\sql\elements.py:527: in _execute_on_connection
+    return connection._execute_clauseelement(
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sqlalchemy\engine\base.py:1641: in _execute_clauseelement
+    ret = self._execute_context(
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sqlalchemy\engine\base.py:1846: in _execute_context
+    return self._exec_single_context(
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sqlalchemy\engine\base.py:1986: in _exec_single_context
+    self._handle_dbapi_exception(
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sqlalchemy\engine\base.py:2363: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sqlalchemy\engine\base.py:1967: in _exec_single_context
+    self.dialect.do_execute(
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sqlalchemy\engine\default.py:952: in do_execute
+    cursor.execute(statement, parameters)
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sqlalchemy\dialects\sqlite\aiosqlite.py:180: in execute
+    self._adapt_connection._handle_exception(error)
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sqlalchemy\dialects\sqlite\aiosqlite.py:340: in _handle_exception
+    raise error
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sqlalchemy\dialects\sqlite\aiosqlite.py:162: in execute
+    self.await_(_cursor.execute(operation, parameters))
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py:132: in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py:196: in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\aiosqlite\cursor.py:40: in execute
+    await self._execute(self._cursor.execute, sql, parameters)
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\aiosqlite\cursor.py:32: in _execute
+    return await self._conn._execute(fn, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\aiosqlite\core.py:160: in _execute
+    return await future
+           ^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+tx = <_queue.SimpleQueue object at 0x0000015B78E74820>
+
+    def _connection_worker_thread(tx: _TxQueue):
+        """
+        Execute function calls on a separate thread.
+    
+        :meta private:
+        """
+        while True:
+            # Continues running until all queue items are processed,
+            # even after connection is closed (so we can finalize all
+            # futures)
+    
+            future, function = tx.get()
+    
+            try:
+                LOG.debug("executing %s", function)
+>               result = function()
+                         ^^^^^^^^^^
+E               sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) no such table: key_pairs
+E               [SQL: SELECT key_pairs.id, key_pairs.kid, key_pairs.private_key, key_pairs.public_key, key_pairs.created_at, key_pairs.is_active 
+E               FROM key_pairs 
+E               WHERE key_pairs.is_active = 1 ORDER BY key_pairs.created_at DESC
+E                LIMIT ? OFFSET ?]
+E               [parameters: (1, 0)]
+E               (Background on this error at: https://sqlalche.me/e/20/e3q8)
+
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\aiosqlite\core.py:63: OperationalError
+---------------------------- Captured stdout setup ----------------------------
+
+DEBUG: Mocking external deps...
+DEBUG: Setting up test DB...
+2026-01-11 03:08:06,266 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-01-11 03:08:06,266 INFO sqlalchemy.engine.Engine COMMIT
+----------------------------- Captured log setup ------------------------------
+INFO     sqlalchemy.engine.Engine:base.py:2710 BEGIN (implicit)
+INFO     sqlalchemy.engine.Engine:base.py:2716 COMMIT
+---------------------------- Captured stdout call -----------------------------
+2026-01-11 03:08:06,269 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-01-11 03:08:06,271 INFO sqlalchemy.engine.Engine SELECT key_pairs.id, key_pairs.kid, key_pairs.private_key, key_pairs.public_key, key_pairs.created_at, key_pairs.is_active 
+FROM key_pairs 
+WHERE key_pairs.is_active = 1 ORDER BY key_pairs.created_at DESC
+ LIMIT ? OFFSET ?
+2026-01-11 03:08:06,271 INFO sqlalchemy.engine.Engine [generated in 0.00029s] (1, 0)
+2026-01-11 03:08:06,272 INFO sqlalchemy.engine.Engine ROLLBACK
+------------------------------ Captured log call ------------------------------
+INFO     sqlalchemy.engine.Engine:base.py:2710 BEGIN (implicit)
+INFO     sqlalchemy.engine.Engine:base.py:1846 SELECT key_pairs.id, key_pairs.kid, key_pairs.private_key, key_pairs.public_key, key_pairs.created_at, key_pairs.is_active 
+FROM key_pairs 
+WHERE key_pairs.is_active = 1 ORDER BY key_pairs.created_at DESC
+ LIMIT ? OFFSET ?
+INFO     sqlalchemy.engine.Engine:base.py:1846 [generated in 0.00029s] (1, 0)
+INFO     sqlalchemy.engine.Engine:base.py:2713 ROLLBACK
+-------------------------- Captured stdout teardown ---------------------------
+DEBUG: Tearing down test DB...
+2026-01-11 03:08:06,930 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-01-11 03:08:06,930 INFO sqlalchemy.engine.Engine COMMIT
+DEBUG: Test DB teardown complete.
+DEBUG: Un-mocking external deps...
+---------------------------- Captured log teardown ----------------------------
+INFO     sqlalchemy.engine.Engine:base.py:2710 BEGIN (implicit)
+INFO     sqlalchemy.engine.Engine:base.py:2716 COMMIT
+______________________________ test_verify_token ______________________________
+
+client = <httpx.AsyncClient object at 0x0000015B78D1E990>
+
+    @pytest.mark.asyncio
+    async def test_verify_token(client: AsyncClient):
+        # First create a token using helper
+>       token = await _create_token(client)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_token.py:25: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\test_token.py:10: in _create_token
+    response = await client.post("/api/v1/token/create", json=payload)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\httpx\_client.py:1859: in post
+    return await self.request(
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\httpx\_client.py:1540: in request
+    return await self.send(request, auth=auth, follow_redirects=follow_redirects)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sentry_sdk\integrations\httpx.py:147: in send
+    rv = await real_send(self, request, **kwargs)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\httpx\_client.py:1629: in send
+    response = await self._send_handling_auth(
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\httpx\_client.py:1657: in _send_handling_auth
+    response = await self._send_handling_redirects(
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\httpx\_client.py:1694: in _send_handling_redirects
+    response = await self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\httpx\_client.py:1730: in _send_single_request
+    response = await transport.handle_async_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\httpx\_transports\asgi.py:170: in handle_async_request
+    await self.app(scope, receive, send)
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\fastapi\applications.py:1054: in __call__
+    await super().__call__(scope, receive, send)
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sentry_sdk\integrations\starlette.py:416: in _sentry_patched_asgi_app
+    return await middleware(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sentry_sdk\integrations\asgi.py:170: in _run_asgi3
+    return await self._run_app(scope, receive, send, asgi_version=3)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sentry_sdk\integrations\asgi.py:262: in _run_app
+    raise exc from None
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sentry_sdk\integrations\asgi.py:257: in _run_app
+    return await self.app(
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\starlette\applications.py:113: in __call__
+    await self.middleware_stack(scope, receive, send)
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sentry_sdk\integrations\starlette.py:164: in _create_span_call
+    return await old_call(app, scope, receive, send, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\starlette\middleware\errors.py:186: in __call__
+    raise exc
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\starlette\middleware\errors.py:164: in __call__
+    await self.app(scope, receive, _send)
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sentry_sdk\integrations\starlette.py:303: in _sentry_exceptionmiddleware_call
+    await old_call(self, scope, receive, send)
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sentry_sdk\integrations\starlette.py:164: in _create_span_call
+    return await old_call(app, scope, receive, send, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\starlette\middleware\exceptions.py:63: in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\starlette\_exception_handler.py:53: in wrapped_app
+    raise exc
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\starlette\_exception_handler.py:42: in wrapped_app
+    await app(scope, receive, sender)
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\starlette\routing.py:716: in __call__
+    await self.middleware_stack(scope, receive, send)
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\starlette\routing.py:736: in app
+    await route.handle(scope, receive, send)
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\starlette\routing.py:290: in handle
+    await self.app(scope, receive, send)
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\starlette\routing.py:78: in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\starlette\_exception_handler.py:53: in wrapped_app
+    raise exc
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\starlette\_exception_handler.py:42: in wrapped_app
+    await app(scope, receive, sender)
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\starlette\routing.py:75: in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sentry_sdk\integrations\fastapi.py:132: in _sentry_app
+    return await old_app(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\fastapi\routing.py:302: in app
+    raw_response = await run_endpoint_function(
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\fastapi\routing.py:213: in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app\api\v1\routes\token.py:15: in api_create_token
+    token_str = await create_token(payload)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app\services\token_service.py:113: in create_token
+    raise e
+app\services\token_service.py:85: in create_token
+    private_key = await _get_cached_private_key()
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app\services\token_service.py:36: in _get_cached_private_key
+    result = await session.execute(
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sqlalchemy\ext\asyncio\session.py:449: in execute
+    result = await greenlet_spawn(
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py:201: in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sqlalchemy\orm\session.py:2351: in execute
+    return self._execute_internal(
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sqlalchemy\orm\session.py:2249: in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sqlalchemy\orm\context.py:306: in orm_execute_statement
+    result = conn.execute(
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sqlalchemy\engine\base.py:1419: in execute
+    return meth(
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sqlalchemy\sql\elements.py:527: in _execute_on_connection
+    return connection._execute_clauseelement(
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sqlalchemy\engine\base.py:1641: in _execute_clauseelement
+    ret = self._execute_context(
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sqlalchemy\engine\base.py:1846: in _execute_context
+    return self._exec_single_context(
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sqlalchemy\engine\base.py:1986: in _exec_single_context
+    self._handle_dbapi_exception(
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sqlalchemy\engine\base.py:2363: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sqlalchemy\engine\base.py:1967: in _exec_single_context
+    self.dialect.do_execute(
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sqlalchemy\engine\default.py:952: in do_execute
+    cursor.execute(statement, parameters)
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sqlalchemy\dialects\sqlite\aiosqlite.py:180: in execute
+    self._adapt_connection._handle_exception(error)
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sqlalchemy\dialects\sqlite\aiosqlite.py:340: in _handle_exception
+    raise error
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sqlalchemy\dialects\sqlite\aiosqlite.py:162: in execute
+    self.await_(_cursor.execute(operation, parameters))
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py:132: in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\sqlalchemy\util\_concurrency_py3k.py:196: in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\aiosqlite\cursor.py:40: in execute
+    await self._execute(self._cursor.execute, sql, parameters)
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\aiosqlite\cursor.py:32: in _execute
+    return await self._conn._execute(fn, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\aiosqlite\core.py:160: in _execute
+    return await future
+           ^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+tx = <_queue.SimpleQueue object at 0x0000015B78D92740>
+
+    def _connection_worker_thread(tx: _TxQueue):
+        """
+        Execute function calls on a separate thread.
+    
+        :meta private:
+        """
+        while True:
+            # Continues running until all queue items are processed,
+            # even after connection is closed (so we can finalize all
+            # futures)
+    
+            future, function = tx.get()
+    
+            try:
+                LOG.debug("executing %s", function)
+>               result = function()
+                         ^^^^^^^^^^
+E               sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) no such table: key_pairs
+E               [SQL: SELECT key_pairs.id, key_pairs.kid, key_pairs.private_key, key_pairs.public_key, key_pairs.created_at, key_pairs.is_active 
+E               FROM key_pairs 
+E               WHERE key_pairs.is_active = 1 ORDER BY key_pairs.created_at DESC
+E                LIMIT ? OFFSET ?]
+E               [parameters: (1, 0)]
+E               (Background on this error at: https://sqlalche.me/e/20/e3q8)
+
+..\..\..\..\AppData\Local\pypoetry\Cache\virtualenvs\servizio-template-65xfKeBY-py3.13\Lib\site-packages\aiosqlite\core.py:63: OperationalError
+---------------------------- Captured stdout setup ----------------------------
+
+DEBUG: Mocking external deps...
+DEBUG: Setting up test DB...
+2026-01-11 03:08:06,936 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-01-11 03:08:06,936 INFO sqlalchemy.engine.Engine COMMIT
+----------------------------- Captured log setup ------------------------------
+INFO     sqlalchemy.engine.Engine:base.py:2710 BEGIN (implicit)
+INFO     sqlalchemy.engine.Engine:base.py:2716 COMMIT
+---------------------------- Captured stdout call -----------------------------
+2026-01-11 03:08:06,938 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-01-11 03:08:06,939 INFO sqlalchemy.engine.Engine SELECT key_pairs.id, key_pairs.kid, key_pairs.private_key, key_pairs.public_key, key_pairs.created_at, key_pairs.is_active 
+FROM key_pairs 
+WHERE key_pairs.is_active = 1 ORDER BY key_pairs.created_at DESC
+ LIMIT ? OFFSET ?
+2026-01-11 03:08:06,939 INFO sqlalchemy.engine.Engine [cached since 0.6678s ago] (1, 0)
+2026-01-11 03:08:06,939 INFO sqlalchemy.engine.Engine ROLLBACK
+------------------------------ Captured log call ------------------------------
+INFO     sqlalchemy.engine.Engine:base.py:2710 BEGIN (implicit)
+INFO     sqlalchemy.engine.Engine:base.py:1846 SELECT key_pairs.id, key_pairs.kid, key_pairs.private_key, key_pairs.public_key, key_pairs.created_at, key_pairs.is_active 
+FROM key_pairs 
+WHERE key_pairs.is_active = 1 ORDER BY key_pairs.created_at DESC
+ LIMIT ? OFFSET ?
+INFO     sqlalchemy.engine.Engine:base.py:1846 [cached since 0.6678s ago] (1, 0)
+INFO     sqlalchemy.engine.Engine:base.py:2713 ROLLBACK
+-------------------------- Captured stdout teardown ---------------------------
+DEBUG: Tearing down test DB...
+2026-01-11 03:08:07,332 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-01-11 03:08:07,333 INFO sqlalchemy.engine.Engine COMMIT
+DEBUG: Test DB teardown complete.
+DEBUG: Un-mocking external deps...
+---------------------------- Captured log teardown ----------------------------
+INFO     sqlalchemy.engine.Engine:base.py:2710 BEGIN (implicit)
+INFO     sqlalchemy.engine.Engine:base.py:2716 COMMIT
+=========================== short test summary info ===========================
+FAILED tests/test_token.py::test_create_token - sqlalchemy.exc.OperationalErr...
+FAILED tests/test_token.py::test_verify_token - sqlalchemy.exc.OperationalErr...
+========================= 2 failed, 5 passed in 1.25s =========================
