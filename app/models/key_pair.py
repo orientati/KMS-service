@@ -9,5 +9,5 @@ class KeyPair(Base):
     kid = Column(String(255), unique=True, index=True, nullable=False)  # Key ID (es. timestamp)
     private_key = Column(Text, nullable=False)
     public_key = Column(Text, nullable=False)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
