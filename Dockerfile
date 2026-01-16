@@ -15,4 +15,4 @@ COPY app /app/app
 COPY alembic.ini /app/alembic.ini
 
 # Default command: run migrations then start api
-CMD alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port ${SERVICE_PORT:-8001}
+CMD alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port ${SERVICE_PORT:-8000}

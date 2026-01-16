@@ -12,7 +12,7 @@ services:
     build: .
     env_file: .env
     ports:
-      - "8001:8001"
+      - "8000:8000"
 
   kms-service_db:
     ports:
