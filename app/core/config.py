@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     RABBITMQ_PORT: int = 5672
     RABBITMQ_USER: str = "guest"
     RABBITMQ_PASS: str = "guest"
+    RABBITMQ_CONNECTION_RETRIES: int = 5
+    RABBITMQ_CONNECTION_RETRY_DELAY: int = 5
 
     model_config = SettingsConfigDict(
         env_file=".env",

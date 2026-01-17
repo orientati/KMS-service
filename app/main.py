@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
 
 import sentry_sdk
@@ -33,7 +34,21 @@ async def lifespan(app: FastAPI):
     # Sottoscrizione eventi RabbitMQ
     try:
         broker = AsyncBrokerSingleton()
-        await broker.connect()
+        connected = False
+        for i in range(settings.RABBITMQ_CONNECTION_RETRIES):
+            logger.info(f"Connecting to RabbitMQ (attempt {i + 1}/{settings.RABBITMQ_CONNECTION_RETRIES})...")
+            connected = await broker.connect()
+            if connected:
+                break
+            logger.warning(
+                f"Failed to connect to RabbitMQ. Retrying in {settings.RABBITMQ_CONNECTION_RETRY_DELAY} seconds...")
+            await asyncio.sleep(settings.RABBITMQ_CONNECTION_RETRY_DELAY)
+            
+        if not connected:
+            logger.error("Could not connect to RabbitMQ after multiple attempts. Exiting...")
+            import sys
+            sys.exit(1)
+        
         await broker.subscribe("kms.events", handle_key_rotated)
     except Exception as e:
         logger.error(f"Impossibile sottoscriversi agli eventi RabbitMQ: {e}")
