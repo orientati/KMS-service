@@ -52,6 +52,8 @@ async def lifespan(app: FastAPI):
             sys.exit(1)
     except Exception as e:
         logger.error(f"Impossibile sottoscriversi agli eventi RabbitMQ: {e}")
+        import sys
+        sys.exit(1)
 
     # Setup Scheduler
     scheduler = AsyncIOScheduler()
