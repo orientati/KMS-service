@@ -44,12 +44,12 @@ async def lifespan(app: FastAPI):
                 f"Failed to connect to RabbitMQ. Retrying in {settings.RABBITMQ_CONNECTION_RETRY_DELAY} seconds...")
             await asyncio.sleep(settings.RABBITMQ_CONNECTION_RETRY_DELAY)
             
-        if not connected:
+        if connected:
+            await broker.subscribe("kms.events", handle_key_rotated)
+        else:
             logger.error("Could not connect to RabbitMQ after multiple attempts. Exiting...")
             import sys
             sys.exit(1)
-        
-        await broker.subscribe("kms.events", handle_key_rotated)
     except Exception as e:
         logger.error(f"Impossibile sottoscriversi agli eventi RabbitMQ: {e}")
 
