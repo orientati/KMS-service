@@ -7,6 +7,11 @@ services:
       RABBITMQ_DEFAULT_PASS: pass
     networks:
       - rabbit_net
+    healthcheck:
+      test: [ "CMD", "rabbitmq-diagnostics", "-q", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:7-alpine
@@ -14,49 +19,88 @@ services:
     networks:
       - kms_service_net
     restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   kms-service-migrate:
     build: .
-    command: alembic upgrade head # sovrascrive il comando di avvio eseguendo solo le migrazioni
+    command: alembic upgrade head
     depends_on:
-      - kms-service_db
+      kms-service_db:
+        condition: service_healthy
     networks:
       - kms_service_net
       - rabbit_net
     deploy:
-      replicas: 1 # forza una sola istanza
-    restart: "no" # non viene riavviato
+      replicas: 1
+    restart: "no"
 
   kms-service:
     build: .
     command: gunicorn -k uvicorn.workers.UvicornWorker app.main:app --bind 0.0.0.0:8000 --workers 1
     depends_on:
-      - kms-service_db
-      - kms-service-migrate
-      - kms-service-migrate
-      - rabbitmq
-      - redis
+      kms-service_db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
-      - KMS_REDIS_URL=redis://redis:6379/0
-      - KMS_DATABASE_URL=postgresql+asyncpg://user:pass@kms-service_db/kms_service
-      - KMS_RABBITMQ_HOST=rabbitmq
+      - KMS_REDIS_URL=${KMS_REDIS_URL:-redis://redis:6379/0}
+      - KMS_DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-pass}@kms-service_db/${POSTGRES_DB:-kms_service}
+      - KMS_RABBITMQ_HOST=${KMS_RABBITMQ_HOST:-rabbitmq}
+      - KMS_RABBITMQ_USER=${RABBITMQ_DEFAULT_USER:-user}
+      - KMS_RABBITMQ_PASS=${RABBITMQ_DEFAULT_PASS:-pass}
+      # Ensure temporary directory is in memory for read-only filesystem if needed
+      - TMPDIR=/tmp
     networks:
       - kms_service_net
       - rabbit_net
     restart: unless-stopped
+    # Application Security Hardening
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    # Resource Limits
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+        reservations:
+          cpus: '0.10'
+          memory: 128M
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    # Use tmpfs for temporary files since root is read-only
+    tmpfs:
+      - /tmp
 
   kms-service_db:
     image: postgres:16
     environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: pass
-      POSTGRES_DB: kms_service
+      POSTGRES_USER: ${POSTGRES_USER:-user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pass}
+      POSTGRES_DB: ${POSTGRES_DB:-kms_service}
     volumes:
       - kms_service_db_data:/var/lib/postgresql/data
     networks:
       - kms_service_net
       - rabbit_net
     restart: unless-stopped
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-user} -d ${POSTGRES_DB:-kms_service}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 volumes:
   kms_service_db_data:
