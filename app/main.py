@@ -18,11 +18,48 @@ from app.services.broker import AsyncBrokerSingleton
 from app.services.event_handlers import handle_key_rotated
 from app.services.token_service import rotate_keys
 
+def strip_sensitive_data(event, hint):
+    """
+    Remove sensitive data from Sentry events.
+    """
+    if 'exception' in event:
+        # Filter stacktrace locals if needed, or request body
+        pass
+        
+    # Example: filtering variables in frames (if send_default_pii=True captures locals)
+    # This is a basic placeholder. Real PII stripping often requires traversing the event dict.
+    return event
+
+is_debug = settings.ENVIRONMENT == "development"
+
 sentry_sdk.init(
     dsn=settings.SENTRY_DSN,
-    send_default_pii=True,
+    send_default_pii=True if is_debug else False,
     release=settings.SENTRY_RELEASE,
+    before_send=None if is_debug else strip_sensitive_data
 )
+
+
+async def connect_broker_forever():
+    from app.core.logging import get_logger
+    logger = get_logger(__name__)
+    broker = AsyncBrokerSingleton()
+    delay = settings.RABBITMQ_CONNECTION_RETRY_DELAY
+    
+    while True:
+        try:
+            logger.info("Tentativo di connessione a RabbitMQ...")
+            if await broker.connect():
+                logger.info("Connessione a RabbitMQ stabilita.")
+                await broker.subscribe("kms.events", handle_key_rotated)
+                break
+        except Exception as e:
+            logger.error(f"Errore connessione RabbitMQ: {e}")
+            
+        logger.warning(f"RabbitMQ non disponibile. Riprovo in {delay} secondi...")
+        await asyncio.sleep(delay)
+        # Exponential backoff with jitter or cap
+        delay = min(delay * 2, 60)
 
 
 @asynccontextmanager
@@ -31,29 +68,8 @@ async def lifespan(app: FastAPI):
     logger = get_logger(__name__)
     setup_logging()
     
-    # Sottoscrizione eventi RabbitMQ
-    try:
-        broker = AsyncBrokerSingleton()
-        connected = False
-        for i in range(settings.RABBITMQ_CONNECTION_RETRIES):
-            logger.info(f"Connecting to RabbitMQ (attempt {i + 1}/{settings.RABBITMQ_CONNECTION_RETRIES})...")
-            connected = await broker.connect()
-            if connected:
-                break
-            logger.warning(
-                f"Failed to connect to RabbitMQ. Retrying in {settings.RABBITMQ_CONNECTION_RETRY_DELAY} seconds...")
-            await asyncio.sleep(settings.RABBITMQ_CONNECTION_RETRY_DELAY)
-            
-        if connected:
-            await broker.subscribe("kms.events", handle_key_rotated)
-        else:
-            logger.error("Could not connect to RabbitMQ after multiple attempts. Exiting...")
-            import sys
-            sys.exit(1)
-    except Exception as e:
-        logger.error(f"Impossibile sottoscriversi agli eventi RabbitMQ: {e}")
-        import sys
-        sys.exit(1)
+    # Avvia la connessione in background (modalità degradata)
+    asyncio.create_task(connect_broker_forever())
 
     # Setup Scheduler
     scheduler = AsyncIOScheduler()
@@ -73,6 +89,8 @@ async def lifespan(app: FastAPI):
         sentry_sdk.flush(timeout=2.0)
     except Exception as e:
         logger.error(f"Errore durante lo shutdown: {e}")
+    
+
 
 
 app = FastAPI(

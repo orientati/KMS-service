@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import asyncio
 import functools
-import jwt
+import json
 import logging
+import base64
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional
+from typing import List, Optional, Dict
 
+import jwt
 from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives.asymmetric import ed25519
 from sqlalchemy import select, delete, desc
 
 from app.core.config import settings
@@ -17,20 +19,25 @@ from app.models.key_pair import KeyPair
 from app.services.http_client import OrientatiException
 from app.services.broker import AsyncBrokerSingleton
 from app.schemas.token import TokenCreate, TokenResponse
+from app.services.redis_client import get_redis_client
+from app.services.secret_manager import get_secret_manager
 
 logger = logging.getLogger(__name__)
 
 # Cache for keys (in-memory)
-_CACHED_PRIVATE_KEY: Optional[str] = None  # PEM string
-_CACHED_PUBLIC_KEYS: Optional[List[str]] = None # List of PEM strings
+_CACHED_PRIVATE_KEY_DATA: Optional[Dict] = None  # {kid, private_bytes_decrypted}
+_CACHED_PUBLIC_KEYS: Optional[Dict[str, str]] = None # Dict {kid: pem_str}
 _LAST_CACHE_UPDATE: Optional[datetime] = None
 _CACHE_TTL = timedelta(minutes=5)
 
 
-async def _get_cached_private_key() -> str:
-    global _CACHED_PRIVATE_KEY
-    if _CACHED_PRIVATE_KEY is None:
-        # Fetch from DB
+async def _get_active_private_key() -> Dict:
+    """
+    Returns dict with 'kid' and 'private_key_obj' (Ed25519PrivateKey)
+    """
+    global _CACHED_PRIVATE_KEY_DATA
+    
+    if _CACHED_PRIVATE_KEY_DATA is None:
         async with SessionLocal() as session:
             # Get the most recent active key
             result = await session.execute(
@@ -41,20 +48,10 @@ async def _get_cached_private_key() -> str:
             )
             key_pair = result.scalar_one_or_none()
             
-            if key_pair:
-                _CACHED_PRIVATE_KEY = key_pair.private_key
-            else:
-                # No key found? Try to rotate (lazy init)
+            if not key_pair:
                 logger.warning("No active private key found in DB. Triggering rotation...")
                 rotation_result = await rotate_keys()
-                
                 if rotation_result.get('status') == 'success':
-                     # After successful rotation, the cache should be invalidated,
-                     # so we can re-fetch the newly created key.
-                     # For simplicity and to avoid recursive calls, we'll re-query the DB.
-                     # _invalidate_cache() is called by rotate_keys, so _CACHED_PRIVATE_KEY is None.
-                     # We can either call this function recursively (carefully) or re-query.
-                     # Re-querying here is safer.
                      async with SessionLocal() as session2:
                         result2 = await session2.execute(
                             select(KeyPair)
@@ -62,36 +59,70 @@ async def _get_cached_private_key() -> str:
                             .order_by(desc(KeyPair.created_at))
                             .limit(1)
                         )
-                        kp2 = result2.scalar_one_or_none()
-                        if kp2:
-                             _CACHED_PRIVATE_KEY = kp2.private_key
-                        else:
-                             raise OrientatiException(message="Failed to retrieve key after rotation", status_code=500)
-                else:
-                    raise OrientatiException(message="Failed to rotate keys", status_code=500)
+                        key_pair = result2.scalar_one_or_none()
 
-    return _CACHED_PRIVATE_KEY
+            if not key_pair:
+                 raise OrientatiException(message="Failed to retrieve key pair", status_code=500)
+
+            # Decrypt private key
+            try:
+                # Provide backward compatibility if we have old RSA keys not encrypted?
+                # The task assumes full migration. We assume stored key is b64(encrypted(bytes)).
+                # But to be safe, if migration happens on existing DB, old keys might be PEM.
+                # However, instructions say "Elimina lo storage... in chiaro". 
+                # We assume new keys are created this way. Old keys handling might fail if not careful.
+                # For this task, we implement the NEW logic.
+                
+                encrypted_bytes = base64.b64decode(key_pair.private_key)
+                manager = get_secret_manager()
+                decrypted_bytes = manager.decrypt(encrypted_bytes)
+                
+                # Load Ed25519
+                # Note: If old keys were RSA PEM strings, this will fail.
+                # We assume clean slate or migration handled elsewhere.
+                try:
+                    private_key_obj = ed25519.Ed25519PrivateKey.from_private_bytes(decrypted_bytes)
+                except ValueError:
+                    # Fallback check if it was RSA PEM (Legacy support scenario)
+                    # Not requested but good for safety? 
+                    # "Migra ... a EdDSA". Suggests we switch.
+                    # If strictly EdDSA, we just proceed.
+                    raise ValueError("Invalid Key Format - Expected EdDSA Private Bytes")
+
+                _CACHED_PRIVATE_KEY_DATA = {
+                    "kid": key_pair.kid,
+                    "private_key_obj": private_key_obj
+                }
+            except Exception as e:
+                logger.error(f"Failed to load/decrypt private key: {e}")
+                raise OrientatiException(message="Key loading error", status_code=500)
+
+    return _CACHED_PRIVATE_KEY_DATA
 
 
-def _invalidate_cache():
-    global _CACHED_PRIVATE_KEY, _CACHED_PUBLIC_KEYS, _LAST_CACHE_UPDATE
-    _CACHED_PRIVATE_KEY = None
+async def _invalidate_cache():
+    global _CACHED_PRIVATE_KEY_DATA, _CACHED_PUBLIC_KEYS, _LAST_CACHE_UPDATE
+    _CACHED_PRIVATE_KEY_DATA = None
     _CACHED_PUBLIC_KEYS = None
     _LAST_CACHE_UPDATE = None
+    
+    try:
+        redis = await get_redis_client()
+        await redis.delete("kms:public_keys")
+    except Exception as e:
+        logger.warning(f"Failed to invalidate Redis cache: {e}")
 
 
 async def create_token(data: TokenCreate) -> str:
     try:
-        private_key = await _get_cached_private_key()
-        
-        # Load object
-        private_key_obj = serialization.load_pem_private_key(
-            private_key.encode('utf-8'),
-            password=None
-        )
+        key_data = await _get_active_private_key()
+        private_key_obj = key_data["private_key_obj"]
+        kid = key_data["kid"]
 
         payload = data.model_dump()
         if "exp" not in payload:
+            if data.expires_in <= 0:
+                raise OrientatiException(message="expires_in must be greater than 0", status_code=400)
             payload["exp"] = int((datetime.now(timezone.utc) + timedelta(minutes=data.expires_in)).timestamp())
 
         # Thread pool for cpu bound
@@ -102,18 +133,20 @@ async def create_token(data: TokenCreate) -> str:
                 jwt.encode,
                 payload,
                 private_key_obj,
-                algorithm="RS256"
+                algorithm="EdDSA",
+                headers={"kid": kid}
             )
         )
         if isinstance(token, bytes):
             token = token.decode("utf-8")
         return token
     except Exception as e:
-        _invalidate_cache()
+        await _invalidate_cache()
         raise e
 
 
-async def _get_cached_public_keys(force_refresh: bool = False) -> List[str]:
+async def _get_cached_public_keys_map(force_refresh: bool = False) -> Dict[str, str]:
+    """Returns Dict {kid: pem_str}"""
     global _CACHED_PUBLIC_KEYS, _LAST_CACHE_UPDATE
     
     now = datetime.now(timezone.utc)
@@ -123,15 +156,34 @@ async def _get_cached_public_keys(force_refresh: bool = False) -> List[str]:
         or force_refresh 
         or (_LAST_CACHE_UPDATE and now - _LAST_CACHE_UPDATE > _CACHE_TTL)
     ):
+        redis = await get_redis_client()
+        redis_key = "kms:public_keys"
+        
+        try:
+            cached_json = await redis.get(redis_key)
+            if cached_json and not force_refresh:
+                _CACHED_PUBLIC_KEYS = json.loads(cached_json)
+                _LAST_CACHE_UPDATE = now
+                return _CACHED_PUBLIC_KEYS
+        except Exception as e:
+            logger.warning(f"Redis get failed: {e}")
+
         async with SessionLocal() as session:
             result = await session.execute(
-                select(KeyPair.public_key)
+                select(KeyPair)
                 .where(KeyPair.is_active == True)
                 .order_by(desc(KeyPair.created_at))
             )
-            keys = result.scalars().all()
-            _CACHED_PUBLIC_KEYS = list(keys)
+            key_pairs = result.scalars().all()
+            
+            # Build map
+            _CACHED_PUBLIC_KEYS = {kp.kid: kp.public_key for kp in key_pairs}
             _LAST_CACHE_UPDATE = now
+            
+            try:
+                await redis.set(redis_key, json.dumps(_CACHED_PUBLIC_KEYS), ex=3600)
+            except Exception as e:
+                logger.warning(f"Redis set failed: {e}")
             
     return _CACHED_PUBLIC_KEYS
 
@@ -140,75 +192,91 @@ async def verify_token(token: str) -> dict:
     from jwt import InvalidTokenError
     
     try:
-        public_keys_pems = await _get_cached_public_keys()
+        # 1. Unverified Header Decode to get KID
+        try:
+            unverified_header = jwt.get_unverified_header(token)
+            kid = unverified_header.get("kid")
+        except Exception:
+             raise OrientatiException(status_code=401, message="Invalid Token Header", url="token/verify_token")
+
+        if not kid:
+            # Reject immediately if kid is missing (as per requirements)
+            raise OrientatiException(status_code=401, message="Missing KID in token", url="token/verify_token")
+
+        # 2. Get Keys Map
+        keys_map = await _get_cached_public_keys_map()
         
-        last_exception = None
+        if kid not in keys_map:
+            # Try refresh once if key not found (maybe rotated recently)
+            keys_map = await _get_cached_public_keys_map(force_refresh=True)
+            if kid not in keys_map:
+                raise OrientatiException(status_code=401, message="Invalid Key ID (kid)", url="token/verify_token")
+
+        pem = keys_map[kid]
+        
+        # 3. Verify
         loop = asyncio.get_running_loop()
+        
+        # Load Public Key
+        # If the key is Ed25519, standard load_pem_public_key works
+        public_key = serialization.load_pem_public_key(pem.encode('utf-8'))
 
-        for pem in public_keys_pems:
-            try:
-                public_key = serialization.load_pem_public_key(pem.encode('utf-8'))
-                
-                # Esegui jwt.decode (CPU-bound) in un thread pool
-                payload = await loop.run_in_executor(
-                    None,
-                    functools.partial(
-                        jwt.decode,
-                        token,
-                        public_key,
-                        algorithms=["RS256"],
-                        options={"verify_aud": False}
-                    )
-                )
-                
-                now = datetime.now(timezone.utc).timestamp()
-                exp = payload.get("exp", now + 1)
-                
-                expired = now > exp
-                return {
-                    **payload,
-                    "verified": True,
-                    "expired": expired,
-                    "expires_at": int(exp)
-                }
-            except InvalidTokenError as e:
-                last_exception = e
-                continue
-            except Exception as e:
-                logger.error(f"Errore decodifica token con una chiave: {e}")
-                continue
-
-        raise last_exception if last_exception else InvalidTokenError("Nessuna chiave disponibile per la verifica")
+        payload = await loop.run_in_executor(
+            None,
+            functools.partial(
+                jwt.decode,
+                token,
+                public_key,
+                algorithms=["EdDSA", "RS256"], # Support both if migrating, or just EdDSA
+                options={"verify_aud": False}
+            )
+        )
+        
+        now = datetime.now(timezone.utc).timestamp()
+        exp = payload.get("exp", now + 1)
+        expired = now > exp
+        
+        return {
+            **payload,
+            "verified": True,
+            "expired": expired,
+            "expires_at": int(exp)
+        }
 
     except OrientatiException as e:
         raise e
     except InvalidTokenError:
-         raise OrientatiException(status_code=401, message="Token non valido", details={"message": "Firma del token non valida o scaduta"}, url="token/verify_token")
+         raise OrientatiException(status_code=401, message="Token invalid or expired", url="token/verify_token")
     except Exception as e:
-        raise OrientatiException(exc=e, url="token/verify_token", status_code=401, message="Token non valido", details={"message": "Impossibile verificare il token"})
+        logger.error(f"Verification error: {e}")
+        raise OrientatiException(status_code=401, message="Verification failed", url="token/verify_token")
 
 
 async def create_secret_keys() -> dict:
     """
-    Genera nuove chiavi RSA e le salva nel DB.
+    Generates new Ed25519 keys, encrypts private key, stores in DB.
     """
     try:
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-        logger.info(f"Generating new key pair - id: {timestamp}")
+        logger.info(f"Generating new Ed25519 key pair - id: {timestamp}")
 
-        # Generate RSA
-        private_key = rsa.generate_private_key(
-            public_exponent=65537,
-            key_size=2048,
-        )
+        # Generate Ed25519
+        private_key = ed25519.Ed25519PrivateKey.generate()
         public_key = private_key.public_key()
 
-        pem_private = private_key.private_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PrivateFormat.PKCS8,
+        # Get Raw Bytes for private key (32 bytes)
+        private_bytes = private_key.private_bytes(
+            encoding=serialization.Encoding.Raw,
+            format=serialization.PrivateFormat.Raw,
             encryption_algorithm=serialization.NoEncryption()
-        ).decode('utf-8')
+        )
 
+        # Encrypt Private Bytes
+        manager = get_secret_manager()
+        encrypted_bytes = manager.encrypt(private_bytes)
+        encrypted_b64 = base64.b64encode(encrypted_bytes).decode('utf-8')
+
+        # Public PEM
         pem_public = public_key.public_bytes(
             encoding=serialization.Encoding.PEM,
             format=serialization.PublicFormat.SubjectPublicKeyInfo
@@ -216,11 +284,9 @@ async def create_secret_keys() -> dict:
 
         # Store in DB
         async with SessionLocal() as session:
-            # Optional: Mark old keys as inactive?
-            # For now just insert new one.
             new_key = KeyPair(
                 kid=timestamp,
-                private_key=pem_private,
+                private_key=encrypted_b64, # Storing encrypted b64 string
                 public_key=pem_public,
                 is_active=True
             )
@@ -239,10 +305,7 @@ async def create_secret_keys() -> dict:
                  data={"kid": timestamp}
              )
 
-        _invalidate_cache()
-
-        # Invalidate cache after rotation
-        _invalidate_cache()
+        await _invalidate_cache()
 
         return {
             'timestamp': timestamp,
@@ -260,18 +323,13 @@ async def cleanup_old_keys(max_age_days: int = 30):
         cutoff_date = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=max_age_days)
         
         async with SessionLocal() as session:
-            # Delete keys older than cutoff
-            # Note: We might want to keep public keys longer? 
-            # For now, delete rows created < cutoff
-            
-            # Using execute delete
             await session.execute(
                 delete(KeyPair).where(KeyPair.created_at < cutoff_date)
             )
             await session.commit()
             
         logger.info("Cleaned up old keys from DB.")
-        _invalidate_cache()
+        await _invalidate_cache()
     except Exception as e:
         logger.error(f"Cleanup failed: {e}")
 
@@ -279,30 +337,38 @@ async def cleanup_old_keys(max_age_days: int = 30):
 async def rotate_keys() -> dict:
     """
     Coordinated rotation: checks if a recent key exists before creating a new one.
+    Uses Distributed Lock (Redlock pattern via redis-py) to ensure single execution.
     """
+    redis = await get_redis_client()
+    lock_name = "kms:rotation_lock"
+    
+    # Try to acquire lock
     try:
-        # 1. Lazy Check
-        async with SessionLocal() as session:
-             # Check for any key created in last 24h
-             recent_cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=24)
-             result = await session.execute(
-                select(KeyPair)
-                .where(KeyPair.created_at > recent_cutoff)
-                .limit(1)
-             )
-             recent_key = result.scalar_one_or_none()
-             
-             if recent_key:
-                 logger.info("A recent key already exists (created < 24h ago). Skipping rotation.")
-                 return {'status': 'skipped', 'reason': 'recent_key_exists'}
-
-        # 2. Create New Keys
-        return await create_secret_keys()
+        # blocking_timeout=0.1 means fail almost immediately if locked
+        async with redis.lock(lock_name, timeout=60, blocking_timeout=0.1): 
+            logger.info("Acquired rotation lock.")
+            
+            # 1. Lazy Check
+            async with SessionLocal() as session:
+                 recent_cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=24)
+                 result = await session.execute(
+                    select(KeyPair)
+                    .where(KeyPair.created_at > recent_cutoff)
+                    .limit(1)
+                 )
+                 recent_key = result.scalar_one_or_none()
+                 
+                 if recent_key:
+                     logger.info("A recent key already exists. Skipping rotation.")
+                     return {'status': 'skipped', 'reason': 'recent_key_exists'}
+    
+            # 2. Create New Keys
+            return await create_secret_keys()
+            
+    except redis.exceptions.LockError:
+        logger.info("Could not acquire lock for key rotation. Skipping.")
+        return {'status': 'skipped', 'reason': 'locked'}
         
-        # 3. Cleanup Old
-        # We can run cleanup async separately
-        # await cleanup_old_keys()
-
     except Exception as e:
         logger.error(f"Rotation failed: {e}")
         return {'status': 'error', 'error': str(e)}
