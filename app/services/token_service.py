@@ -5,6 +5,7 @@ import functools
 import json
 import logging
 import base64
+import redis
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Dict
 
@@ -339,13 +340,13 @@ async def rotate_keys() -> dict:
     Coordinated rotation: checks if a recent key exists before creating a new one.
     Uses Distributed Lock (Redlock pattern via redis-py) to ensure single execution.
     """
-    redis = await get_redis_client()
+    redis_client = await get_redis_client()
     lock_name = "kms:rotation_lock"
     
     # Try to acquire lock
     try:
         # blocking_timeout=0.1 means fail almost immediately if locked
-        async with redis.lock(lock_name, timeout=60, blocking_timeout=0.1): 
+        async with redis_client.lock(lock_name, timeout=60, blocking_timeout=0.1): 
             logger.info("Acquired rotation lock.")
             
             # 1. Lazy Check
