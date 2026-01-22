@@ -21,12 +21,16 @@ def mock_external_deps():
     """
     Mock external dependencies to prevent actual connections or background tasks.
     """
+    # Patch where it is used or imported
     with patch("app.services.broker.AsyncBrokerSingleton") as MockBroker, \
-         patch("app.main.AsyncIOScheduler") as MockScheduler:
+         patch("app.main.AsyncIOScheduler") as MockScheduler, \
+         patch("app.services.token_service.AsyncBrokerSingleton") as MockBrokerTokenService:
         
         mock_broker = AsyncMock()
-        MockBroker.return_value = mock_broker
         mock_broker.connect.return_value = True
+        
+        MockBroker.return_value = mock_broker
+        MockBrokerTokenService.return_value = mock_broker
         
         mock_scheduler = MagicMock() 
         MockScheduler.return_value = mock_scheduler
@@ -44,6 +48,14 @@ async def setup_test_db():
     # Load models
     import_models()
     
+    import_models()
+    
+    if os.path.exists(TEST_DB_PATH):
+        try:
+            os.remove(TEST_DB_PATH)
+        except Exception:
+            pass
+            
     # Create tables
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -57,7 +69,19 @@ async def setup_test_db():
     from app.services.broker import AsyncBrokerSingleton
     from app.services import token_service
     AsyncBrokerSingleton._instance = None
-    token_service._invalidate_cache()
+    AsyncBrokerSingleton._instance = None
+    await token_service._invalidate_cache()
+
+@pytest.fixture(autouse=True)
+async def mock_redis(monkeypatch):
+    import fakeredis.aioredis
+    fake_redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    
+    async def get_fake_redis():
+        return fake_redis
+        
+    monkeypatch.setattr("app.services.redis_client.get_redis_client", get_fake_redis)
+    return fake_redis
     
     # Delete the test database file
     if os.path.exists(TEST_DB_PATH):
