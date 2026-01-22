@@ -8,6 +8,13 @@ services:
     networks:
       - rabbit_net
 
+  redis:
+    image: redis:7-alpine
+    container_name: kms_redis
+    networks:
+      - kms_service_net
+    restart: unless-stopped
+
   kms-service-migrate:
     build: .
     command: alembic upgrade head # sovrascrive il comando di avvio eseguendo solo le migrazioni
@@ -26,7 +33,13 @@ services:
     depends_on:
       - kms-service_db
       - kms-service-migrate
+      - kms-service-migrate
       - rabbitmq
+      - redis
+    environment:
+      - KMS_REDIS_URL=redis://redis:6379/0
+      - KMS_DATABASE_URL=postgresql+asyncpg://user:pass@kms-service_db/kms_service
+      - KMS_RABBITMQ_HOST=rabbitmq
     networks:
       - kms_service_net
       - rabbit_net
