@@ -121,6 +121,8 @@ async def create_token(data: TokenCreate) -> str:
 
         payload = data.model_dump()
         if "exp" not in payload:
+            if data.expires_in <= 0:
+                raise OrientatiException(message="expires_in must be greater than 0", status_code=400)
             payload["exp"] = int((datetime.now(timezone.utc) + timedelta(minutes=data.expires_in)).timestamp())
 
         # Thread pool for cpu bound
