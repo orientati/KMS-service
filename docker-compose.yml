@@ -50,6 +50,7 @@ services:
         condition: service_healthy
     environment:
       - KMS_REDIS_URL=${KMS_REDIS_URL:-redis://redis:6379/0}
+      - KMS_REDIS_PASSWORD=${KMS_REDIS_PASSWORD}
       - KMS_DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-pass}@kms-service_db/${POSTGRES_DB:-kms_service}
       - KMS_RABBITMQ_HOST=${KMS_RABBITMQ_HOST:-rabbitmq}
       - KMS_RABBITMQ_USER=${RABBITMQ_DEFAULT_USER:-user}
