@@ -32,7 +32,7 @@ _LAST_CACHE_UPDATE: Optional[datetime] = None
 _CACHE_TTL = timedelta(minutes=5)
 
 
-async def _get_active_private_key() -> Dict:
+async def _get_active_private_key(retry_count: int = 0) -> Dict:
     """
     Returns dict with 'kid' and 'private_key_obj' (Ed25519PrivateKey)
     """
@@ -104,8 +104,12 @@ async def _get_active_private_key() -> Dict:
                     )
                     await session_fix.commit()
                 
+                if retry_count >= 3:
+                    logger.critical("Max retry limit reached in key decryption resiliency logic.")
+                    raise OrientatiException(message="Key loading error: Max retries exceeded", status_code=500)
+
                 # Retry (will trigger rotation if no active key found)
-                return await _get_active_private_key()
+                return await _get_active_private_key(retry_count=retry_count + 1)
 
     return _CACHED_PRIVATE_KEY_DATA
 
