@@ -12,7 +12,7 @@ from typing import List, Optional, Dict
 import jwt
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ed25519
-from sqlalchemy import select, delete, desc
+from sqlalchemy import select, delete, desc, update
 
 from app.core.config import settings
 from app.db.session import SessionLocal
@@ -95,8 +95,17 @@ async def _get_active_private_key() -> Dict:
                     "private_key_obj": private_key_obj
                 }
             except Exception as e:
-                logger.error(f"Failed to load/decrypt private key: {e}")
-                raise OrientatiException(message="Key loading error", status_code=500)
+                logger.error(f"Failed to load/decrypt private key (kid={key_pair.kid}): {e}. Marking as inactive and retrying.")
+                async with SessionLocal() as session_fix:
+                    await session_fix.execute(
+                        update(KeyPair)
+                        .where(KeyPair.id == key_pair.id)
+                        .values(is_active=False)
+                    )
+                    await session_fix.commit()
+                
+                # Retry (will trigger rotation if no active key found)
+                return await _get_active_private_key()
 
     return _CACHED_PRIVATE_KEY_DATA
 
@@ -355,6 +364,7 @@ async def rotate_keys() -> dict:
                  result = await session.execute(
                     select(KeyPair)
                     .where(KeyPair.created_at > recent_cutoff)
+                    .where(KeyPair.is_active == True)
                     .limit(1)
                  )
                  recent_key = result.scalar_one_or_none()
