@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, Asyn
 TEST_DB_PATH = "test_kms.db"
 os.environ["KMS_DATABASE_URL"] = f"sqlite+aiosqlite:///./{TEST_DB_PATH}"
 os.environ["SENTRY_DSN"] = ""
-os.environ["ENVIRONMENT"] = "testing"
+os.environ["KMS_ENVIRONMENT"] = "testing"
 os.environ["KMS_SENTRY_DSN"] = ""
 
 # Now import app modules
@@ -119,8 +119,9 @@ async def mock_redis(monkeypatch):
     
     # Clear token_service memory cache
     from app.services import token_service
-    token_service._public_keys_cache = None
-    token_service._last_cache_refresh = 0
+    token_service._CACHED_PUBLIC_KEYS = None
+    token_service._LAST_CACHE_UPDATE = None
+    token_service._CACHED_PRIVATE_KEY_DATA = None
     
     async def get_fake_redis():
         return fake_redis
