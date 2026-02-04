@@ -40,4 +40,4 @@ async def test_verify_invalid_token(client: AsyncClient):
     # Expecting 401 as per exception handling in token service
     assert response.status_code == 401
     data = response.json()
-    assert data["message"] == "Token non valido"
+    assert data["message"] == "Invalid Token Header"

@@ -271,7 +271,7 @@ async def create_secret_keys() -> dict:
     Generates new Ed25519 keys, encrypts private key, stores in DB.
     """
     try:
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
         logger.info(f"Generating new Ed25519 key pair - id: {timestamp}")
 
         # Generate Ed25519
