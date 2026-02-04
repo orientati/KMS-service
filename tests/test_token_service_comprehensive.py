@@ -1,12 +1,17 @@
 import pytest
 import asyncio
 import jwt
+import os
+import json
 import base64
 from datetime import datetime, timedelta, timezone
 from cryptography.hazmat.primitives.asymmetric import ed25519
+from unittest.mock import patch, AsyncMock, MagicMock
 from app.services import token_service
 from app.models.key_pair import KeyPair
 from app.schemas.token import TokenCreate
+from app.api.v1.routes.token import api_create_token as create_token
+from app.services.http_client import OrientatiException
 from app.db.session import SessionLocal
 from sqlalchemy import select
 
@@ -55,15 +60,26 @@ async def test_verification_fails_tampered_token():
     await token_service.create_secret_keys()
     token = await token_service.create_token(TokenCreate(user_id=1, session_id=1, expires_in=10))
     
-    # Tamper with the signature (last char)
-    fake_token = token[:-1] + ('A' if token[-1] != 'A' else 'B')
+    # Tamper with the payload part (middle)
+    parts = token.split('.')
+    if len(parts) == 3:
+        # Change a character in the payload
+        payload = parts[1]
+        tampered_payload = payload[:-1] + ('A' if payload[-1] != 'A' else 'B')
+        fake_token = f"{parts[0]}.{tampered_payload}.{parts[2]}"
+    else:
+        fake_token = "invalid.token.here"
     
-    with pytest.raises(Exception) as exc:
+    with pytest.raises(OrientatiException) as exc:
         await token_service.verify_token(fake_token)
-    assert "status_code=401" in str(exc.value)
+    assert exc.value.status_code == 401
+    assert exc.value.status_code == 401
 
 @pytest.mark.asyncio
-async def test_rotation_lock_logic(mock_redis):
+async def test_rotation_lock_logic(mock_redis, monkeypatch):
+    # Mock _get_active_private_key to return None so we bypass the "recent_key_exists" check
+    monkeypatch.setattr("app.services.token_service._get_active_private_key", AsyncMock(return_value=None))
+    
     # Acquire lock manually first
     await mock_redis.lock("kms:rotation_lock").acquire()
     
