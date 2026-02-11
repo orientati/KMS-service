@@ -27,7 +27,7 @@ services:
 
   kms-service-migrate:
     build: .
-    command: alembic upgrade head
+    command: [ "python3", "-m", "alembic", "upgrade", "head" ]
     depends_on:
       kms-service_db:
         condition: service_healthy
@@ -40,7 +40,7 @@ services:
 
   kms-service:
     build: .
-    command: gunicorn -k uvicorn.workers.UvicornWorker app.main:app --bind 0.0.0.0:8000 --workers 1
+    command: [ "python3", "-m", "gunicorn", "-k", "uvicorn.workers.UvicornWorker", "app.main:app", "--bind", "0.0.0.0:8000", "--workers", "1" ]
     depends_on:
       kms-service_db:
         condition: service_healthy
