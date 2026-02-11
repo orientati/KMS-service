@@ -3,10 +3,10 @@ name = "kms-service"
 version = "0.1.0"
 description = "Template dei servizi FastAPI orientati"
 authors = [
-    {name = "Federico Zorgnotto",email = "f.zorgnotto.2759@vallauri.edu"}
+    { name = "Federico Zorgnotto", email = "f.zorgnotto.2759@vallauri.edu" }
 ]
 
-requires-python = ">=3.13,<4.0"
+requires-python = ">=3.11,<4.0"
 dependencies = [
     "fastapi (>=0.116.1,<0.117.0)",
     "uvicorn (>=0.35.0,<0.36.0)",
@@ -31,6 +31,7 @@ dependencies = [
     "aiosqlite (>=0.22.1,<0.23.0)",
     "redis (>=5.0.1,<6.0.0)",
     "hvac (>=2.1.0,<3.0.0)",
+    "async-timeout (>=4.0.3)",
 ]
 
 [build-system]
@@ -46,6 +47,8 @@ pytest-asyncio = "^0.23.5"
 pytest-mock = "^3.12.0"
 fakeredis = "^2.20.0"
 
+[tool.poetry]
+package-mode = false
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
